@@ -4,6 +4,9 @@ using System.Runtime.InteropServices;
 
 class ChessGame
 {
+    private static CountdownEvent countdownEvent = new(2);
+    private static readonly object consoleLock = new ();
+    
     enum Color
     {
         White, Black
@@ -33,7 +36,11 @@ class ChessGame
             _ => "Unknown State",
         };
         
-        Console.WriteLine(result);
+        // Use lock to synchronize console writes
+        lock (consoleLock)
+        {
+            Console.WriteLine($"{moves.Length} {moves} {result}");
+        }
     }
     
     static void Main()
@@ -41,7 +48,22 @@ class ChessGame
         string engine1Path = "engine1.exe";
         string engine2Path = "engine2.exe";
         
-        ChessMatch(engine1Path, engine2Path);
+        ThreadPool.QueueUserWorkItem(_ => RunChessMatch(engine1Path, engine2Path));
+        ThreadPool.QueueUserWorkItem(_ => RunChessMatch(engine2Path, engine1Path));
+        
+        countdownEvent.Wait();
+    }
+    
+    static void RunChessMatch(string whiteEnginePath, string blackEnginePath)
+    {
+        try
+        {
+            ChessMatch(whiteEnginePath, blackEnginePath);
+        }
+        finally
+        {
+            countdownEvent.Signal();
+        }
     }
 
     static void ChessMatch(string whiteEnginePath, string blackEnginePath)
@@ -65,7 +87,7 @@ class ChessGame
             Task<string> moveFromEngine1Task = Task.Run(() => engine1.GetBestMove());
             string moveFromEngine1 = moveFromEngine1Task.Result; 
 
-            Console.Write($"{moveNumber}: {moveFromEngine1}");
+            // Console.Write($"{moveNumber}: {moveFromEngine1}");
 
             moves += $" {moveFromEngine1} ";
 
@@ -84,7 +106,7 @@ class ChessGame
             Task<string> moveFromEngine2Task = Task.Run(() => engine2.GetBestMove());
             string moveFromEngine2 = moveFromEngine2Task.Result; 
 
-            Console.WriteLine($" {moveFromEngine2}");
+            // Console.WriteLine($" {moveFromEngine2}");
             
             moves += $" {moveFromEngine2} ";
 
@@ -124,8 +146,8 @@ class UCIEngine
 {
     private Process process;
     private Stopwatch stopwatch;
-    private int time = 8000;
-    private int increment = 80;
+    private int time = 1000;
+    private int increment = 10;
 
     public UCIEngine(Process process)
     {
