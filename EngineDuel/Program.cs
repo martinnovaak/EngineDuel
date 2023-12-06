@@ -1,5 +1,4 @@
 ﻿using System.Diagnostics;
-using System.Runtime.CompilerServices; // CallerFilePath
 using System.Runtime.InteropServices;
 
 class ChessGame
@@ -19,11 +18,6 @@ class ChessGame
     
     [DllImport("chesslib.dll", CallingConvention = CallingConvention.Cdecl)]
     private static extern GameState process_moves(string moves);
-    
-    private static string? GetFileDirectory([CallerFilePath] string path = null)
-    {
-        return Path.GetDirectoryName(path);
-    }
 
     static void Finishgame(GameState state, Color color, string moves)
     {
@@ -56,14 +50,8 @@ class ChessGame
     
     static void RunChessMatch(string whiteEnginePath, string blackEnginePath)
     {
-        try
-        {
-            ChessMatch(whiteEnginePath, blackEnginePath);
-        }
-        finally
-        {
-            countdownEvent.Signal();
-        }
+        ChessMatch(whiteEnginePath, blackEnginePath);
+        countdownEvent.Signal();
     }
 
     static void ChessMatch(string whiteEnginePath, string blackEnginePath)
@@ -77,7 +65,6 @@ class ChessGame
         UCIEngine engine2 = new UCIEngine(engine2Process);
 
         string moves = "";
-        int moveNumber = 1;
         GameState state;
         
         // Game loop
@@ -86,8 +73,6 @@ class ChessGame
             engine1.SetPosition("startpos", moves);
             Task<string> moveFromEngine1Task = Task.Run(() => engine1.GetBestMove());
             string moveFromEngine1 = moveFromEngine1Task.Result; 
-
-            // Console.Write($"{moveNumber}: {moveFromEngine1}");
 
             moves += $" {moveFromEngine1} ";
 
@@ -105,8 +90,6 @@ class ChessGame
             engine2.SetPosition("startpos", moves);
             Task<string> moveFromEngine2Task = Task.Run(() => engine2.GetBestMove());
             string moveFromEngine2 = moveFromEngine2Task.Result; 
-
-            // Console.WriteLine($" {moveFromEngine2}");
             
             moves += $" {moveFromEngine2} ";
 
@@ -120,8 +103,6 @@ class ChessGame
                 engine2.QuitEngine(); 
                 break;
             }
-            
-            moveNumber++;
         }
         
         engine1Process.Close();
