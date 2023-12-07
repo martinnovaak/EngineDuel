@@ -1,5 +1,12 @@
 ﻿using System.Diagnostics;
 using System.Runtime.InteropServices;
+using engine_test;
+
+public static class StringExtensions
+{
+    public static string ExtractName(this string input) => 
+        input.Split(' ').Skip(2).FirstOrDefault() ?? "unknown";
+}
 
 class ChessGame
 {
@@ -129,6 +136,7 @@ class UCIEngine
     private Stopwatch stopwatch;
     private int time = 1000;
     private int increment = 10;
+    private string name;
 
     public UCIEngine(Process process)
     {
@@ -137,10 +145,18 @@ class UCIEngine
         InitializeEngine();
     }
 
+    public string getName()
+    {
+        return name;
+    }
+
     private void InitializeEngine()
     {
-        SendCommand("uci"); 
-        WaitForResponse("uciok"); 
+        SendCommand("uci");
+        if (!WaitForResponse("uciok"))
+        {
+            Console.WriteLine("Engine did not respond.\n");
+        } 
     }
 
     public void SetPosition(string fen, string moves)
@@ -176,11 +192,20 @@ class UCIEngine
 
     private void WaitForResponse(string expectedResponse)
     {
+        Stopwatch stopwatch = Stopwatch.StartNew();
+        int timeout = 5;
+        
         string? response;
         do
         {
             response = process.StandardOutput.ReadLine();
-        } while (response != null && !response.Contains(expectedResponse));
+            if (response != null && response.Contains("id name"))
+            {
+                name = response.ExtractName();
+            }
+        } while (response != null && !response.Contains(expectedResponse) && stopwatch.Elapsed.TotalSeconds < timeout);
+
+        return response != null;
     }
 
     private string WaitForBestMove()
