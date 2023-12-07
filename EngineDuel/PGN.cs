@@ -85,7 +85,7 @@ public class PGN
 
         if (!string.IsNullOrEmpty(promotion))
         {
-            pgnMove += "=" + promotion;
+            pgnMove += "=" + promotion.ToUpper();
         }
 
         if (pieceChar == 'K' && squareFrom == Square.E1)
