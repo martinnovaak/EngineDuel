@@ -1,10 +1,18 @@
 ﻿using System.Diagnostics;
 using System.Runtime.InteropServices;
+using engine_test;
+
+public static class StringExtensions
+{
+    public static string ExtractName(this string input) => 
+        input.Split(' ').Skip(2).FirstOrDefault() ?? "unknown";
+}
 
 class ChessGame
 {
     private static CountdownEvent countdownEvent = new(2);
     private static readonly object consoleLock = new ();
+    static int roundCounter = 0;
     
     enum Color
     {
@@ -19,21 +27,24 @@ class ChessGame
     [DllImport("chesslib.dll", CallingConvention = CallingConvention.Cdecl)]
     private static extern GameState process_moves(string moves);
 
-    static void Finishgame(GameState state, Color color, string moves)
+    static void Finishgame(GameState state, Color color, ref PGN pgn)
     {
-        string result = "\n";
-        result += state switch
+        string result = state switch
         {
-            GameState.Draw => "1/2 - 1/2",
-            GameState.Checkmate => $"{ (color == Color.White? "1 - 0" : "0 - 1") }",
-            GameState.Error => $"{ (color == Color.White? "0 - 1" : "1 - 0") }",
+            GameState.Draw => "1/2-1/2",
+            GameState.Checkmate => $"{ (color == Color.White? "1-0" : "0-1") }",
+            GameState.Error => $"{ (color == Color.White? "0-1" : "1-0") }",
             _ => "Unknown State",
         };
+        
+        string filePath = "output.pgn";
+        int currentRound = Interlocked.Increment(ref roundCounter);
+        string pgnMoves = pgn.GetGame(result, currentRound);
         
         // Use lock to synchronize console writes
         lock (consoleLock)
         {
-            Console.WriteLine($"{moves.Length} {moves} {result}");
+            File.AppendAllText(filePath, pgnMoves);
         }
     }
     
@@ -48,9 +59,10 @@ class ChessGame
         countdownEvent.Wait();
     }
     
-    static void RunChessMatch(string whiteEnginePath, string blackEnginePath)
+    static void RunChessMatch(string engine1Path, string engine2Path)
     {
-        ChessMatch(whiteEnginePath, blackEnginePath);
+        ChessMatch(engine1Path, engine2Path);
+        ChessMatch(engine2Path, engine1Path);
         countdownEvent.Signal();
     }
 
@@ -66,20 +78,22 @@ class ChessGame
 
         string moves = "";
         GameState state;
-        
+
+        PGN pgn = new(engine1.getName(), engine2.getName());
         // Game loop
         while (true)
         {
             engine1.SetPosition("startpos", moves);
             Task<string> moveFromEngine1Task = Task.Run(() => engine1.GetBestMove());
             string moveFromEngine1 = moveFromEngine1Task.Result; 
+            pgn.PlayMove(moveFromEngine1);
 
             moves += $" {moveFromEngine1} ";
-
             state = process_moves(moves);
+            
             if (state != GameState.Ongoing)
             {
-                Finishgame(state, Color.White, moves);
+                Finishgame(state, Color.White, ref pgn);
                 engine1.StopEngine(); 
                 engine1.QuitEngine();
                 engine2.StopEngine(); 
@@ -89,14 +103,16 @@ class ChessGame
 
             engine2.SetPosition("startpos", moves);
             Task<string> moveFromEngine2Task = Task.Run(() => engine2.GetBestMove());
-            string moveFromEngine2 = moveFromEngine2Task.Result; 
+            string moveFromEngine2 = moveFromEngine2Task.Result;
+
+            pgn.PlayMove(moveFromEngine2);
             
             moves += $" {moveFromEngine2} ";
 
             state = process_moves(moves);
             if (state != GameState.Ongoing)
             {
-                Finishgame(state, Color.Black, moves);
+                Finishgame(state, Color.Black, ref pgn);
                 engine1.StopEngine(); 
                 engine1.QuitEngine(); 
                 engine2.StopEngine();
@@ -129,6 +145,7 @@ class UCIEngine
     private Stopwatch stopwatch;
     private int time = 1000;
     private int increment = 10;
+    private string name;
 
     public UCIEngine(Process process)
     {
@@ -137,10 +154,18 @@ class UCIEngine
         InitializeEngine();
     }
 
+    public string getName()
+    {
+        return name;
+    }
+
     private void InitializeEngine()
     {
-        SendCommand("uci"); 
-        WaitForResponse("uciok"); 
+        SendCommand("uci");
+        if (!WaitForResponse("uciok"))
+        {
+            Console.WriteLine("Engine did not respond.\n");
+        } 
     }
 
     public void SetPosition(string fen, string moves)
@@ -174,13 +199,22 @@ class UCIEngine
         process.StandardInput.WriteLine(command);
     }
 
-    private void WaitForResponse(string expectedResponse)
+    private bool WaitForResponse(string expectedResponse)
     {
+        Stopwatch stopwatch = Stopwatch.StartNew();
+        int timeout = 5;
+        
         string? response;
         do
         {
             response = process.StandardOutput.ReadLine();
-        } while (response != null && !response.Contains(expectedResponse));
+            if (response != null && response.Contains("id name"))
+            {
+                name = response.ExtractName();
+            }
+        } while (response != null && !response.Contains(expectedResponse) && stopwatch.Elapsed.TotalSeconds < timeout);
+
+        return response != null;
     }
 
     private string WaitForBestMove()
