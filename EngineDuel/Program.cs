@@ -39,7 +39,7 @@ class ChessGame
         
         string filePath = "output.pgn";
         int currentRound = Interlocked.Increment(ref roundCounter);
-        string pgnMoves = pgn.getGame(result, currentRound);
+        string pgnMoves = pgn.GetGame(result, currentRound);
         
         // Use lock to synchronize console writes
         lock (consoleLock)
@@ -86,7 +86,7 @@ class ChessGame
             engine1.SetPosition("startpos", moves);
             Task<string> moveFromEngine1Task = Task.Run(() => engine1.GetBestMove());
             string moveFromEngine1 = moveFromEngine1Task.Result; 
-            pgn.playMove(moveFromEngine1);
+            pgn.PlayMove(moveFromEngine1);
 
             moves += $" {moveFromEngine1} ";
             state = process_moves(moves);
@@ -110,7 +110,7 @@ class ChessGame
             Task<string> moveFromEngine2Task = Task.Run(() => engine2.GetBestMove());
             string moveFromEngine2 = moveFromEngine2Task.Result;
 
-            pgn.playMove(moveFromEngine2);
+            pgn.PlayMove(moveFromEngine2);
             
             moves += $" {moveFromEngine2} ";
 

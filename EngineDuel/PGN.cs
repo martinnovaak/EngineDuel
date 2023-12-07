@@ -94,7 +94,7 @@ public class PGN
             {
                 ChessBoard[(int)Square.A1] = ' ';
                 ChessBoard[(int)Square.D1] = 'R';
-                pgnMove = "O-O-0";
+                pgnMove = "O-O-O";
             }
             else if (squareTo == Square.G1)
             {
@@ -109,7 +109,7 @@ public class PGN
             {
                 ChessBoard[(int)Square.A8] = ' ';
                 ChessBoard[(int)Square.D8] = 'r';
-                pgnMove = "O-O-0";
+                pgnMove = "O-O-O";
             }
             else if (squareTo == Square.G8)
             {
