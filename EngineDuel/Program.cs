@@ -93,11 +93,6 @@ class ChessGame
             
             if (state != GameState.Ongoing)
             {
-                lock (consoleLock)
-                {
-                    Console.WriteLine($"{engine1.getName()} - {engine2.getName()}");
-                }
-
                 Finishgame(state, Color.White, ref pgn);
                 engine1.StopEngine(); 
                 engine1.QuitEngine();
@@ -117,10 +112,6 @@ class ChessGame
             state = process_moves(moves);
             if (state != GameState.Ongoing)
             {
-                lock (consoleLock)
-                {
-                    Console.WriteLine($"{engine1.getName()} - {engine2.getName()}");
-                }
                 Finishgame(state, Color.Black, ref pgn);
                 engine1.StopEngine(); 
                 engine1.QuitEngine(); 
