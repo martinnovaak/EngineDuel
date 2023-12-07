@@ -13,7 +13,7 @@ public class PGN
         moves = new();
     }
     
-    private char[] chessBoard =
+    private char[] ChessBoard =
     {
         'R', 'N', 'B', 'Q', 'K', 'B', 'N', 'R',
         'P', 'P', 'P', 'P', 'P', 'P', 'P', 'P',
@@ -37,7 +37,7 @@ public class PGN
         A8, B8, C8, D8, E8, F8, G8, H8
     }
 
-    private static readonly Dictionary<string, Square> squareMap = new()
+    private static readonly Dictionary<string, Square> SquareMap = new()
     {
         {"a1", Square.A1}, {"a2", Square.A2}, {"a3", Square.A3}, {"a4", Square.A4},
         {"a5", Square.A5}, {"a6", Square.A6}, {"a7", Square.A7}, {"a8", Square.A8},
@@ -57,7 +57,7 @@ public class PGN
         {"h5", Square.H5}, {"h6", Square.H6}, {"h7", Square.H7}, {"h8", Square.H8},
     };
 
-    public void playMove(string uciMove)
+    public void PlayMove(string uciMove)
     {
         string[] squares = uciMove
             .Select((c, i) => new { Character = c, Index = i })
@@ -69,12 +69,12 @@ public class PGN
         string to = squares[1];
         string promotion = squares.Length > 2 ? squares[2] : "";
 
-        Square squareFrom = squareMap[from];
-        Square squareTo = squareMap[to];
-        char pieceChar = chessBoard[(int)squareFrom];
+        Square squareFrom = SquareMap[from];
+        Square squareTo = SquareMap[to];
+        char pieceChar = ChessBoard[(int)squareFrom];
 
-        chessBoard[(int)squareFrom] = ' ';
-        chessBoard[(int)squareTo] = pieceChar;
+        ChessBoard[(int)squareFrom] = ' ';
+        ChessBoard[(int)squareTo] = pieceChar;
 
         string pgnMove = from + to;
 
@@ -92,33 +92,37 @@ public class PGN
         {
             if (squareTo == Square.C1)
             {
-                chessBoard[(int)Square.A1] = ' ';
-                chessBoard[(int)Square.D1] = 'R';
+                ChessBoard[(int)Square.A1] = ' ';
+                ChessBoard[(int)Square.D1] = 'R';
+                pgnMove = "O-O-0";
             }
             else if (squareTo == Square.G1)
             {
-                chessBoard[(int)Square.H1] = ' ';
-                chessBoard[(int)Square.F1] = 'R';
+                ChessBoard[(int)Square.H1] = ' ';
+                ChessBoard[(int)Square.F1] = 'R';
+                pgnMove = "O-O";
             }
         }
         else if (pieceChar == 'k' && squareFrom == Square.E8)
         {
             if (squareTo == Square.C8)
             {
-                chessBoard[(int)Square.A8] = ' ';
-                chessBoard[(int)Square.D8] = 'r';
+                ChessBoard[(int)Square.A8] = ' ';
+                ChessBoard[(int)Square.D8] = 'r';
+                pgnMove = "O-O-0";
             }
             else if (squareTo == Square.G8)
             {
-                chessBoard[(int)Square.H8] = ' ';
-                chessBoard[(int)Square.F8] = 'r';
+                ChessBoard[(int)Square.H8] = ' ';
+                ChessBoard[(int)Square.F8] = 'r';
+                pgnMove = "O-O";
             }
         }
 
         moves.Add(pgnMove);
     }
 
-    public string getGame(string result, int currentRound)
+    public string GetGame(string result, int currentRound)
     {
         DateTime currentDate = DateTime.Now;
         string formattedDate = currentDate.ToString("yyyy.MM.dd");
