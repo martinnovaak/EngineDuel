@@ -12,6 +12,7 @@ class ChessGame
 {
     private static CountdownEvent countdownEvent = new(2);
     private static readonly object consoleLock = new ();
+    static int roundCounter = 0;
     
     enum Color
     {
@@ -26,21 +27,24 @@ class ChessGame
     [DllImport("chesslib.dll", CallingConvention = CallingConvention.Cdecl)]
     private static extern GameState process_moves(string moves);
 
-    static void Finishgame(GameState state, Color color, string moves)
+    static void Finishgame(GameState state, Color color, ref PGN pgn)
     {
-        string result = "\n";
-        result += state switch
+        string result = state switch
         {
-            GameState.Draw => "1/2 - 1/2",
-            GameState.Checkmate => $"{ (color == Color.White? "1 - 0" : "0 - 1") }",
-            GameState.Error => $"{ (color == Color.White? "0 - 1" : "1 - 0") }",
+            GameState.Draw => "1/2-1/2",
+            GameState.Checkmate => $"{ (color == Color.White? "1-0" : "0-1") }",
+            GameState.Error => $"{ (color == Color.White? "0-1" : "1-0") }",
             _ => "Unknown State",
         };
+        
+        string filePath = "output.pgn";
+        int currentRound = Interlocked.Increment(ref roundCounter);
+        string pgnMoves = pgn.getGame(result, currentRound);
         
         // Use lock to synchronize console writes
         lock (consoleLock)
         {
-            Console.WriteLine($"{moves.Length} {moves} {result}");
+            File.AppendAllText(filePath, pgnMoves);
         }
     }
     
@@ -96,14 +100,20 @@ class ChessGame
 
             engine2.SetPosition("startpos", moves);
             Task<string> moveFromEngine2Task = Task.Run(() => engine2.GetBestMove());
-            string moveFromEngine2 = moveFromEngine2Task.Result; 
+            string moveFromEngine2 = moveFromEngine2Task.Result;
+
+            pgn.playMove(moveFromEngine2);
             
             moves += $" {moveFromEngine2} ";
 
             state = process_moves(moves);
             if (state != GameState.Ongoing)
             {
-                Finishgame(state, Color.Black, moves);
+                lock (consoleLock)
+                {
+                    Console.WriteLine($"{engine1.getName()} - {engine2.getName()}");
+                }
+                Finishgame(state, Color.Black, ref pgn);
                 engine1.StopEngine(); 
                 engine1.QuitEngine(); 
                 engine2.StopEngine();
@@ -190,7 +200,7 @@ class UCIEngine
         process.StandardInput.WriteLine(command);
     }
 
-    private void WaitForResponse(string expectedResponse)
+    private bool WaitForResponse(string expectedResponse)
     {
         Stopwatch stopwatch = Stopwatch.StartNew();
         int timeout = 5;
