@@ -59,9 +59,10 @@ class ChessGame
         countdownEvent.Wait();
     }
     
-    static void RunChessMatch(string whiteEnginePath, string blackEnginePath)
+    static void RunChessMatch(string engine1Path, string engine2Path)
     {
-        ChessMatch(whiteEnginePath, blackEnginePath);
+        ChessMatch(engine1Path, engine2Path);
+        ChessMatch(engine2Path, engine1Path);
         countdownEvent.Signal();
     }
 
@@ -77,20 +78,27 @@ class ChessGame
 
         string moves = "";
         GameState state;
-        
+
+        PGN pgn = new(engine1.getName(), engine2.getName());
         // Game loop
         while (true)
         {
             engine1.SetPosition("startpos", moves);
             Task<string> moveFromEngine1Task = Task.Run(() => engine1.GetBestMove());
             string moveFromEngine1 = moveFromEngine1Task.Result; 
+            pgn.playMove(moveFromEngine1);
 
             moves += $" {moveFromEngine1} ";
-
             state = process_moves(moves);
+            
             if (state != GameState.Ongoing)
             {
-                Finishgame(state, Color.White, moves);
+                lock (consoleLock)
+                {
+                    Console.WriteLine($"{engine1.getName()} - {engine2.getName()}");
+                }
+
+                Finishgame(state, Color.White, ref pgn);
                 engine1.StopEngine(); 
                 engine1.QuitEngine();
                 engine2.StopEngine(); 
