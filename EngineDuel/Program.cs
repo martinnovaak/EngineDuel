@@ -13,10 +13,10 @@ public struct GameResult
     private int wins;
     private int draws;
     private int loses;
-
-    public int Wins => Interlocked.CompareExchange(ref wins, 0, 0);
-    public int Draws => Interlocked.CompareExchange(ref draws, 0, 0);
-    public int Loses => Interlocked.CompareExchange(ref loses, 0, 0);
+    
+    public int Wins => wins;
+    public int Draws => draws;
+    public int Loses => loses;
     
     public void IncrementWins() => Interlocked.Increment(ref wins);
     public void IncrementDraws() => Interlocked.Increment(ref draws);
@@ -29,18 +29,11 @@ class ChessGame
     private static CountdownEvent countdownEvent = new(16);
     private static readonly object fileLock = new ();
     private static readonly object consoleLock = new ();
-    static int roundCounter;
+    private static int roundCounter;
     private static GameResult gameResult;
     
-    enum Color
-    {
-        White, Black
-    }
-    
-    enum GameState
-    {
-        Ongoing, Draw, Checkmate, Error
-    }
+    enum Color { White, Black }
+    enum GameState { Ongoing, Draw, Checkmate, Error }
     
     [DllImport("chesslib.dll", CallingConvention = CallingConvention.Cdecl)]
     private static extern GameState process_moves(string moves);
