@@ -1,6 +1,6 @@
 ﻿using System.Diagnostics;
 using System.Runtime.InteropServices;
-using engine_test;
+using EngineDuel;
 
 public static class StringExtensions
 {
