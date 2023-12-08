@@ -1,5 +1,4 @@
-﻿using System.Diagnostics;
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 using EngineDuel;
 
 public static class StringExtensions
@@ -111,13 +110,9 @@ class ChessGame
 
     static int ChessMatch(string whiteEnginePath, string blackEnginePath)
     {
-        // Start the engines as processes
-        Process engine1Process = StartEngineProcess(whiteEnginePath);
-        Process engine2Process = StartEngineProcess(blackEnginePath);
-
         // Initialize communication with the engines
-        UCIEngine engine1 = new UCIEngine(engine1Process);
-        UCIEngine engine2 = new UCIEngine(engine2Process);
+        UCIEngine engine1 = new UCIEngine(whiteEnginePath);
+        UCIEngine engine2 = new UCIEngine(blackEnginePath);
 
         string moves = "";
         GameState state;
@@ -133,6 +128,7 @@ class ChessGame
                 engine2.QuitEngine(); 
                 break;
             }
+            
             engine1.SetPosition("startpos", moves);
             Task<string> moveFromEngine1Task = Task.Run(() => engine1.GetBestMove());
             string moveFromEngine1 = moveFromEngine1Task.Result; 
@@ -166,24 +162,8 @@ class ChessGame
                 break;
             }
         }
-        
-        engine1Process.Close();
-        engine2Process.Close();
 
         return result;
-    }
-
-    static Process StartEngineProcess(string enginePath)
-    {
-        Process process = new Process();
-        process.StartInfo.FileName = enginePath;
-        process.StartInfo.UseShellExecute = false;
-        process.StartInfo.RedirectStandardInput = true;
-        process.StartInfo.RedirectStandardOutput = true;
-        process.StartInfo.CreateNoWindow = true;
-        process.Start();
-
-        return process;
     }
     
     static void Main()

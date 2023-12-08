@@ -10,9 +10,16 @@ class UCIEngine
     private int increment = 80;
     private string name;
 
-    public UCIEngine(Process process)
+    public UCIEngine(string enginePath)
     {
-        this.process = process;
+        process = new Process();
+        process.StartInfo.FileName = enginePath;
+        process.StartInfo.UseShellExecute = false;
+        process.StartInfo.RedirectStandardInput = true;
+        process.StartInfo.RedirectStandardOutput = true;
+        process.StartInfo.CreateNoWindow = true;
+        process.Start();
+        
         stopwatch = new();
         InitializeEngine();
     }
