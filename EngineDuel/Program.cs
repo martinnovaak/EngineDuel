@@ -8,12 +8,29 @@ public static class StringExtensions
         input.Split(' ').Skip(2).FirstOrDefault() ?? "unknown";
 }
 
+public struct GameResult
+{
+    private int wins;
+    private int draws;
+    private int loses;
+
+    public int Wins => Interlocked.CompareExchange(ref wins, 0, 0);
+    public int Draws => Interlocked.CompareExchange(ref draws, 0, 0);
+    public int Loses => Interlocked.CompareExchange(ref loses, 0, 0);
+    
+    public void IncrementWins() => Interlocked.Increment(ref wins);
+    public void IncrementDraws() => Interlocked.Increment(ref draws);
+    public void IncrementLoses() => Interlocked.Increment(ref loses);
+}
+
 class ChessGame
 {
     private static CancellationTokenSource cancelToken = new ();
     private static CountdownEvent countdownEvent = new(16);
+    private static readonly object fileLock = new ();
     private static readonly object consoleLock = new ();
     static int roundCounter;
+    private static GameResult gameResult;
     
     enum Color
     {
@@ -28,7 +45,23 @@ class ChessGame
     [DllImport("chesslib.dll", CallingConvention = CallingConvention.Cdecl)]
     private static extern GameState process_moves(string moves);
 
-    static void Finishgame(GameState state, Color color, ref PGN pgn)
+    private static void SaveResult(int result)
+    {
+        switch (result)
+        {
+            case 1:
+                gameResult.IncrementWins();
+                break;
+            case 0:
+                gameResult.IncrementDraws();
+                break;
+            case -1:
+                gameResult.IncrementLoses();
+                break;
+        }
+    }
+    
+    static int Finishgame(GameState state, Color color, ref PGN pgn)
     {
         string result = state switch
         {
@@ -43,10 +76,22 @@ class ChessGame
         string pgnMoves = pgn.GetGame(result, currentRound);
         
         // Use lock to synchronize console writes
-        lock (consoleLock)
+        lock (fileLock)
         {
             File.AppendAllText(filePath, pgnMoves);
         }
+        
+        lock (consoleLock)
+        {
+            Console.WriteLine($"Wins: {gameResult.Wins}, draws: {gameResult.Draws}, loses: {gameResult.Loses}");
+        }
+
+        return result switch
+        {
+            "1/2-1/2" => 0,
+            "1-0" => 1,
+            "0-1" => -1,
+        };
     }
     
     static void Main()
@@ -60,12 +105,14 @@ class ChessGame
         {
             ThreadPool.QueueUserWorkItem(_ =>
             {
-                RunChessMatch(engine1Path, engine2Path);
+                SaveResult(ChessMatch(engine1Path, engine2Path));
+                SaveResult(-ChessMatch(engine2Path, engine1Path));
                 countdownEvent.Signal();
             }, cancelToken);
             ThreadPool.QueueUserWorkItem(_ =>
             {
-                RunChessMatch(engine2Path, engine1Path);
+                SaveResult(-ChessMatch(engine2Path, engine1Path));
+                SaveResult(ChessMatch(engine1Path, engine2Path));
                 countdownEvent.Signal();
             }, cancelToken);
         }
@@ -73,15 +120,8 @@ class ChessGame
         countdownEvent.Wait();
         cancelToken.Cancel();
     }
-    
-    static void RunChessMatch(string engine1Path, string engine2Path)
-    {
-        ChessMatch(engine1Path, engine2Path);
-        ChessMatch(engine2Path, engine1Path);
-        countdownEvent.Signal();
-    }
 
-    static void ChessMatch(string whiteEnginePath, string blackEnginePath)
+    static int ChessMatch(string whiteEnginePath, string blackEnginePath)
     {
         // Start the engines as processes
         Process engine1Process = StartEngineProcess(whiteEnginePath);
@@ -93,6 +133,7 @@ class ChessGame
 
         string moves = "";
         GameState state;
+        int result = 0;
 
         PGN pgn = new(engine1.getName(), engine2.getName());
         // Game loop
@@ -114,10 +155,8 @@ class ChessGame
             
             if (state != GameState.Ongoing)
             {
-                Finishgame(state, Color.White, ref pgn);
-                engine1.StopEngine(); 
+                result = Finishgame(state, Color.White, ref pgn);
                 engine1.QuitEngine();
-                engine2.StopEngine(); 
                 engine2.QuitEngine(); 
                 break;
             }
@@ -133,10 +172,8 @@ class ChessGame
             state = process_moves(moves);
             if (state != GameState.Ongoing)
             {
-                Finishgame(state, Color.Black, ref pgn);
-                engine1.StopEngine(); 
+                result = Finishgame(state, Color.Black, ref pgn);
                 engine1.QuitEngine(); 
-                engine2.StopEngine();
                 engine2.QuitEngine(); 
                 break;
             }
@@ -144,6 +181,8 @@ class ChessGame
         
         engine1Process.Close();
         engine2Process.Close();
+
+        return result;
     }
 
     static Process StartEngineProcess(string enginePath)
@@ -164,8 +203,8 @@ class UCIEngine
 {
     private Process process;
     private Stopwatch stopwatch;
-    private int time = 1000;
-    private int increment = 10;
+    private int time = 8000;
+    private int increment = 80;
     private string name;
 
     public UCIEngine(Process process)
@@ -269,6 +308,8 @@ class UCIEngine
     // Shut down the engine
     public void QuitEngine()
     {
+        SendCommand("stop");
+        
         SendCommand("quit");
         
         WaitForResponse("uciok");
