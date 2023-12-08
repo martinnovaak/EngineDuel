@@ -10,9 +10,10 @@ public static class StringExtensions
 
 class ChessGame
 {
-    private static CountdownEvent countdownEvent = new(2);
+    private static CancellationTokenSource cancelToken = new ();
+    private static CountdownEvent countdownEvent = new(16);
     private static readonly object consoleLock = new ();
-    static int roundCounter = 0;
+    static int roundCounter;
     
     enum Color
     {
@@ -53,10 +54,24 @@ class ChessGame
         string engine1Path = "engine1.exe";
         string engine2Path = "engine2.exe";
         
-        ThreadPool.QueueUserWorkItem(_ => RunChessMatch(engine1Path, engine2Path));
-        ThreadPool.QueueUserWorkItem(_ => RunChessMatch(engine2Path, engine1Path));
+        ThreadPool.SetMaxThreads(12, 12);
+
+        for (int i = 0; i < 100; i++)
+        {
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                RunChessMatch(engine1Path, engine2Path);
+                countdownEvent.Signal();
+            }, cancelToken);
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                RunChessMatch(engine2Path, engine1Path);
+                countdownEvent.Signal();
+            }, cancelToken);
+        }
         
         countdownEvent.Wait();
+        cancelToken.Cancel();
     }
     
     static void RunChessMatch(string engine1Path, string engine2Path)
@@ -83,6 +98,12 @@ class ChessGame
         // Game loop
         while (true)
         {
+            if (cancelToken.IsCancellationRequested)
+            {
+                engine1.QuitEngine();
+                engine2.QuitEngine(); 
+                break;
+            }
             engine1.SetPosition("startpos", moves);
             Task<string> moveFromEngine1Task = Task.Run(() => engine1.GetBestMove());
             string moveFromEngine1 = moveFromEngine1Task.Result; 
