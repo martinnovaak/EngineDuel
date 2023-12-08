@@ -27,10 +27,11 @@ class ChessGame
 {
     private static CancellationTokenSource cancelToken = new ();
     private static CountdownEvent countdownEvent = new(16);
-    private static readonly object fileLock = new ();
-    private static readonly object consoleLock = new ();
     private static int roundCounter;
     private static GameResult gameResult;
+    
+    private static readonly object fileLock = new ();
+    private static readonly object consoleLock = new ();
     
     enum Color { White, Black }
     enum GameState { Ongoing, Draw, Checkmate, Error }
@@ -59,8 +60,8 @@ class ChessGame
         string result = state switch
         {
             GameState.Draw => "1/2-1/2",
-            GameState.Checkmate => $"{ (color == Color.White? "1-0" : "0-1") }",
-            GameState.Error => $"{ (color == Color.White? "0-1" : "1-0") }",
+            GameState.Checkmate => $"{(color == Color.White? "1-0" : "0-1")}",
+            GameState.Error => $"{(color == Color.White? "0-1" : "1-0")}",
             _ => "Unknown State",
         };
         
@@ -87,31 +88,25 @@ class ChessGame
         };
     }
     
-    static void Main()
+    private static void RunChessMatches(string engine1Path, string engine2Path)
     {
-        string engine1Path = "engine1.exe";
-        string engine2Path = "engine2.exe";
-        
-        ThreadPool.SetMaxThreads(12, 12);
-
         for (int i = 0; i < 100; i++)
         {
+            // Queue threads for running chess matches
             ThreadPool.QueueUserWorkItem(_ =>
             {
                 SaveResult(ChessMatch(engine1Path, engine2Path));
                 SaveResult(-ChessMatch(engine2Path, engine1Path));
                 countdownEvent.Signal();
-            }, cancelToken);
+            });
+
             ThreadPool.QueueUserWorkItem(_ =>
             {
                 SaveResult(-ChessMatch(engine2Path, engine1Path));
                 SaveResult(ChessMatch(engine1Path, engine2Path));
                 countdownEvent.Signal();
-            }, cancelToken);
+            });
         }
-        
-        countdownEvent.Wait();
-        cancelToken.Cancel();
     }
 
     static int ChessMatch(string whiteEnginePath, string blackEnginePath)
@@ -190,123 +185,15 @@ class ChessGame
 
         return process;
     }
-}
-
-class UCIEngine
-{
-    private Process process;
-    private Stopwatch stopwatch;
-    private int time = 8000;
-    private int increment = 80;
-    private string name;
-
-    public UCIEngine(Process process)
-    {
-        this.process = process;
-        stopwatch = new();
-        InitializeEngine();
-    }
-
-    public string getName()
-    {
-        return name;
-    }
-
-    private void InitializeEngine()
-    {
-        SendCommand("uci");
-        if (!WaitForResponse("uciok"))
-        {
-            Console.WriteLine("Engine did not respond.\n");
-        } 
-    }
-
-    public void SetPosition(string fen, string moves)
-    {
-        if (moves != "")
-        {
-            fen += " moves " + moves;
-        }
-        SendCommand($"position {fen}");
-    }
-
-    public string GetBestMove()
-    {
-        SendCommand($"go wtime {time} btime {time} winc{increment} binc{increment}");
-        
-        stopwatch.Start();
-        
-        string bestMove = WaitForBestMove();
-        
-        stopwatch.Stop();
-        
-        time += (increment - (int)stopwatch.ElapsedMilliseconds);
-
-        stopwatch.Reset();
-        
-        return bestMove;
-    }
-
-    private void SendCommand(string command)
-    {
-        process.StandardInput.WriteLine(command);
-    }
-
-    private bool WaitForResponse(string expectedResponse)
-    {
-        Stopwatch stopwatch = Stopwatch.StartNew();
-        int timeout = 5;
-        
-        string? response;
-        do
-        {
-            response = process.StandardOutput.ReadLine();
-            if (response != null && response.Contains("id name"))
-            {
-                name = response.ExtractName();
-            }
-        } while (response != null && !response.Contains(expectedResponse) && stopwatch.Elapsed.TotalSeconds < timeout);
-
-        return response != null;
-    }
-
-    private string WaitForBestMove()
-    {
-        // Wait for the engine to respond with the best move
-        string response;
-        do
-        {
-            response = process.StandardOutput.ReadLine();
-            // Check if the response contains "bestmove" to identify the line with the best move
-            if (response != null && response.StartsWith("bestmove"))
-            {
-                // Extract the best move from the response
-                string[] parts = response.Split(' ');
-                if (parts.Length >= 2)
-                {
-                    return parts[1];
-                }
-            }
-        } while (response != null);
-
-        return null;
-    }
     
-    // Stop engine calculation
-    public void StopEngine()
+    static void Main()
     {
-        SendCommand("stop");
-    }
+        string engine1Path = "engine1.exe";
+        string engine2Path = "engine2.exe";
 
-    // Shut down the engine
-    public void QuitEngine()
-    {
-        SendCommand("stop");
-        
-        SendCommand("quit");
-        
-        WaitForResponse("uciok");
-        
-        process.StandardInput.Close();
+        ThreadPool.SetMaxThreads(12, 12);
+        RunChessMatches(engine1Path, engine2Path);
+        countdownEvent.Wait();
+        cancelToken.Cancel();
     }
 }
