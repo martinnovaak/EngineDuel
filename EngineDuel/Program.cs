@@ -25,12 +25,14 @@ public struct GameResult
 class ChessGame
 {
     private static CancellationTokenSource cancelToken = new ();
-    private static CountdownEvent countdownEvent = new(16);
+    private static CountdownEvent countdownEvent = new(200);
     private static int roundCounter;
     private static GameResult gameResult;
     
     private static readonly object fileLock = new ();
     private static readonly object consoleLock = new ();
+
+    private static SPRT sprt;
     
     enum Color { White, Black }
     enum GameState { Ongoing, Draw, Checkmate, Error, TimeOut }
@@ -38,8 +40,52 @@ class ChessGame
     [DllImport("chesslib.dll", CallingConvention = CallingConvention.Cdecl)]
     private static extern GameState process_moves(string moves);
 
+    public static bool IsMoveStringLegal(string move)
+    {
+        if (string.IsNullOrEmpty(move) || move.Length < 4 || move.Length > 5)
+        {
+            // Invalid if the string is null, empty, or less than 4 characters
+            return false;
+        }
+
+        char fromFile = move[0];
+        char fromRank = move[1];
+        char toFile = move[2];
+        char toRank = move[3];
+
+        // Check if first and third letters are file letters (a-h)
+        if (!"abcdefgh".Contains(fromFile) || !"abcdefgh".Contains(toFile))
+        {
+            return false;
+        }
+
+        // Check if second and fourth letters are rank letters (1-8)
+        if (!"12345678".Contains(fromRank) || !"12345678".Contains(toRank))
+        {
+            return false;
+        }
+
+        // Check if it has five letters, and if so, the fifth letter is a promotion letter
+        if (move.Length == 5)
+        {
+            char promotionLetter = move[4];
+            if (!"qrbn".Contains(promotionLetter))
+            {
+                return false;
+            }
+        }
+
+        // If all checks pass, the move is considered legal
+        return true;
+    }
+    
     private static void SaveResult(int result)
     {
+        if (cancelToken.IsCancellationRequested)
+        {
+            return;
+        }
+        
         switch (result)
         {
             case 1:
@@ -51,6 +97,19 @@ class ChessGame
             case -1:
                 gameResult.IncrementLoses();
                 break;
+        }
+
+        //var sprtInstance = new SPRT(0.05, 0.05, 0, 5);
+        var testResult = sprt.test(gameResult.Wins, gameResult.Draws, gameResult.Loses);
+
+        if (testResult.Item1)
+        {
+            cancelToken.Cancel();
+        }
+        
+        lock (consoleLock)
+        {
+            Console.WriteLine($"Wins: {gameResult.Wins}, draws: {gameResult.Draws}, loses: {gameResult.Loses}. {testResult.Item2}");
         }
     }
     
@@ -77,11 +136,6 @@ class ChessGame
         {
             File.AppendAllText(filePath, pgnMoves);
         }
-        
-        lock (consoleLock)
-        {
-            Console.WriteLine($"Wins: {gameResult.Wins}, draws: {gameResult.Draws}, loses: {gameResult.Loses}");
-        }
 
         return result switch
         {
@@ -93,7 +147,7 @@ class ChessGame
     
     private static void RunChessMatches(string engine1Path, string engine2Path)
     {
-        for (int i = 0; i < 100; i++)
+        for (int i = 0; i < 200; i++)
         {
             // Queue threads for running chess matches
             ThreadPool.QueueUserWorkItem(_ =>
@@ -136,7 +190,6 @@ class ChessGame
             engine1.SetPosition("startpos", moves);
             Task<string> moveFromEngine1Task = Task.Run(() => engine1.GetBestMove());
             string moveFromEngine1 = moveFromEngine1Task.Result; 
-            pgn.PlayMove(moveFromEngine1);
 
             moves += $" {moveFromEngine1} ";
             state = process_moves(moves);
@@ -146,6 +199,12 @@ class ChessGame
                 state = GameState.TimeOut;
             }
             
+            if(!IsMoveStringLegal(moveFromEngine1))
+            {
+                Console.WriteLine(moveFromEngine1);
+                state = GameState.Error;
+            }
+            
             if (state != GameState.Ongoing)
             {
                 result = Finishgame(state, Color.White, ref pgn);
@@ -153,12 +212,12 @@ class ChessGame
                 engine2.QuitEngine(); 
                 break;
             }
+            
+            pgn.PlayMove(moveFromEngine1);
 
             engine2.SetPosition("startpos", moves);
             Task<string> moveFromEngine2Task = Task.Run(() => engine2.GetBestMove());
             string moveFromEngine2 = moveFromEngine2Task.Result;
-
-            pgn.PlayMove(moveFromEngine2);
             
             moves += $" {moveFromEngine2} ";
 
@@ -169,6 +228,12 @@ class ChessGame
                 state = GameState.TimeOut;
             }
             
+            if(!IsMoveStringLegal(moveFromEngine2))
+            {
+                Console.WriteLine(moveFromEngine2);
+                state = GameState.Error;
+            }
+            
             if (state != GameState.Ongoing)
             {
                 result = Finishgame(state, Color.Black, ref pgn);
@@ -176,6 +241,8 @@ class ChessGame
                 engine2.QuitEngine(); 
                 break;
             }
+            
+            pgn.PlayMove(moveFromEngine2);
         }
 
         return result;
@@ -185,6 +252,8 @@ class ChessGame
     {
         string engine1Path = "engine1.exe";
         string engine2Path = "engine2.exe";
+
+        sprt = new(0.05, 0.05, 0, 5);
 
         ThreadPool.SetMaxThreads(12, 12);
         RunChessMatches(engine1Path, engine2Path);
