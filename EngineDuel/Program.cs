@@ -33,7 +33,7 @@ class ChessGame
     private static readonly object consoleLock = new ();
     
     enum Color { White, Black }
-    enum GameState { Ongoing, Draw, Checkmate, Error }
+    enum GameState { Ongoing, Draw, Checkmate, Error, TimeOut }
     
     [DllImport("chesslib.dll", CallingConvention = CallingConvention.Cdecl)]
     private static extern GameState process_moves(string moves);
@@ -56,11 +56,15 @@ class ChessGame
     
     static int Finishgame(GameState state, Color color, ref PGN pgn)
     {
-        string result = state switch
+        string result = (state, color) switch
         {
-            GameState.Draw => "1/2-1/2",
-            GameState.Checkmate => $"{(color == Color.White? "1-0" : "0-1")}",
-            GameState.Error => $"{(color == Color.White? "0-1" : "1-0")}",
+            (GameState.Draw, _) => "1/2-1/2",
+            (GameState.Checkmate, Color.White) => "1-0",
+            (GameState.Checkmate, Color.Black) => "0-1",
+            (GameState.Error, Color.White) => "0-1",
+            (GameState.Error, Color.Black) => "1-0",
+            (GameState.TimeOut, Color.White) => "0-1",
+            (GameState.TimeOut, Color.Black) => "1-0",
             _ => "Unknown State",
         };
         
@@ -136,6 +140,11 @@ class ChessGame
 
             moves += $" {moveFromEngine1} ";
             state = process_moves(moves);
+
+            if (!engine1.TimeLeft())
+            {
+                state = GameState.TimeOut;
+            }
             
             if (state != GameState.Ongoing)
             {
@@ -154,6 +163,12 @@ class ChessGame
             moves += $" {moveFromEngine2} ";
 
             state = process_moves(moves);
+            
+            if (!engine2.TimeLeft())
+            {
+                state = GameState.TimeOut;
+            }
+            
             if (state != GameState.Ongoing)
             {
                 result = Finishgame(state, Color.Black, ref pgn);

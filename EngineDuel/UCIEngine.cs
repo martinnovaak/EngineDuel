@@ -64,6 +64,11 @@ class UCIEngine
         return bestMove;
     }
 
+    public bool TimeLeft()
+    {
+        return time > 0;
+    }
+
     private void SendCommand(string command)
     {
         process.StandardInput.WriteLine(command);
