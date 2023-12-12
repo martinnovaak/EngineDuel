@@ -153,38 +153,36 @@ class ChessGame
     {
         for (int i = 0; i < 200; i++)
         {
-            if (openings.Count < 2)
-            {
-                openings = db.GetRandomSample();
-            }
-            // Queue threads for running chess matches
-            ThreadPool.QueueUserWorkItem(_ =>
-            {
-                string gameOpening;
-                if (!openings.TryPop(out gameOpening))
-                {
-                    gameOpening = "";
-                }
-                SaveResult(ChessMatch(engine1Path, engine2Path, gameOpening));
-                SaveResult(-ChessMatch(engine2Path, engine1Path, gameOpening));
-                countdownEvent.Signal();
-            });
-
-            ThreadPool.QueueUserWorkItem(_ =>
-            {
-                string gameOpening;
-                if (!openings.TryPop(out gameOpening))
-                {
-                    gameOpening = "";
-                }
-                SaveResult(-ChessMatch(engine2Path, engine1Path, gameOpening));
-                SaveResult(ChessMatch(engine1Path, engine2Path, gameOpening));
-                countdownEvent.Signal();
-            });
+            ThreadPool.QueueUserWorkItem(_ => ChessMatch(engine1Path, engine2Path, 1));
+            ThreadPool.QueueUserWorkItem(_ => ChessMatch(engine2Path, engine1Path, -1));
         }
     }
+    
+    private static void ChessMatch(string whiteEnginePath, string blackEnginePath, int coefficient)
+    {
+        string gameOpening;
+        if (!openings.TryPop(out gameOpening))
+        {
+            // Repopulate openings stack if it's empty
+            db.GetRandomSample(openings);
 
-    static int ChessMatch(string whiteEnginePath, string blackEnginePath, string initialMoves)
+            // Try again to pop an opening
+            if (!openings.TryPop(out gameOpening))
+            {
+                gameOpening = "";
+            }
+        }
+
+        int result1 = SingleGame(whiteEnginePath, blackEnginePath, gameOpening);
+        SaveResult(coefficient * result1);
+
+        int result2 = -SingleGame(blackEnginePath, whiteEnginePath, gameOpening);
+        SaveResult(coefficient * result2);
+
+        countdownEvent.Signal();
+    }
+
+    static int SingleGame(string whiteEnginePath, string blackEnginePath, string initialMoves)
     {
         // Initialize communication with the engines
         UCIEngine engine1 = new UCIEngine(whiteEnginePath);
@@ -273,7 +271,8 @@ class ChessGame
 
         sprt = new(0.05, 0.05, 0, 5);
         db = new();
-        openings = db.GetRandomSample();
+        openings = new();
+        db.GetRandomSample(openings);
         
         ThreadPool.SetMaxThreads(12, 12);
         RunChessMatches(engine1Path, engine2Path);

@@ -6,48 +6,37 @@ namespace EngineDuel;
 
 public class Database
 {
-    public SqliteConnection connection { get; private set; }
-    
-    public Database()
+    public void GetRandomSample(ConcurrentStack<string> openings)
     {
-        connection = new SqliteConnection("Data Source=openings.db");
-    }
-
-    public void OpenConnection()
-    {
-        if (connection.State != ConnectionState.Open)
-            connection.Open();
-    }
-
-    public void CloseConnection()
-    {
-        if (connection.State != ConnectionState.Closed)
-            connection.Close();
-    }
-
-    public ConcurrentStack<string> GetRandomSample()
-    {
-        ConcurrentStack<string> results = new ();
-        
-        connection.Open();
-
-        using (SqliteCommand cmd = connection.CreateCommand())
+        try
         {
-            cmd.CommandText = "SELECT moves FROM openings " +
-                              "WHERE rowid IN (SELECT rowid FROM openings ORDER BY random() LIMIT 100)";
-
-            using (SqliteDataReader reader = cmd.ExecuteReader())
+            using (SqliteConnection connection = new SqliteConnection("Data Source=openings.db"))
             {
-                while (reader.Read())
+                if (connection.State != ConnectionState.Open)
+                    connection.Open();
+
+                using (SqliteCommand cmd = connection.CreateCommand())
                 {
-                    string moves = reader["moves"].ToString();
-                    results.Push(moves);
+                    cmd.CommandText = "SELECT moves FROM openings " +
+                                      "WHERE rowid IN (SELECT rowid FROM openings ORDER BY random() LIMIT 20)";
+
+                    using (SqliteDataReader reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            string moves = reader["moves"].ToString();
+                            openings.Push(moves);
+                        }
+                    }
                 }
+
+                if (connection.State != ConnectionState.Closed)
+                    connection.Close();
             }
         }
-
-        connection.Close();
-
-        return results;
+        catch (Exception ex)
+        {
+            Console.WriteLine($"An error occurred: {ex.Message}");
+        }
     }
 }
