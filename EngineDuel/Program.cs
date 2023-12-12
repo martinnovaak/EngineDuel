@@ -1,4 +1,5 @@
-﻿using System.Runtime.InteropServices;
+﻿using System.Collections.Concurrent;
+using System.Runtime.InteropServices;
 using EngineDuel;
 
 public static class StringExtensions
@@ -31,6 +32,9 @@ class ChessGame
     
     private static readonly object fileLock = new ();
     private static readonly object consoleLock = new ();
+
+    private static ConcurrentStack<string> openings;
+    private static Database db;
 
     private static SPRT sprt;
     
@@ -149,30 +153,44 @@ class ChessGame
     {
         for (int i = 0; i < 200; i++)
         {
+            if (openings.Count < 2)
+            {
+                openings = db.GetRandomSample();
+            }
             // Queue threads for running chess matches
             ThreadPool.QueueUserWorkItem(_ =>
             {
-                SaveResult(ChessMatch(engine1Path, engine2Path));
-                SaveResult(-ChessMatch(engine2Path, engine1Path));
+                string gameOpening;
+                if (!openings.TryPop(out gameOpening))
+                {
+                    gameOpening = "";
+                }
+                SaveResult(ChessMatch(engine1Path, engine2Path, gameOpening));
+                SaveResult(-ChessMatch(engine2Path, engine1Path, gameOpening));
                 countdownEvent.Signal();
             });
 
             ThreadPool.QueueUserWorkItem(_ =>
             {
-                SaveResult(-ChessMatch(engine2Path, engine1Path));
-                SaveResult(ChessMatch(engine1Path, engine2Path));
+                string gameOpening;
+                if (!openings.TryPop(out gameOpening))
+                {
+                    gameOpening = "";
+                }
+                SaveResult(-ChessMatch(engine2Path, engine1Path, gameOpening));
+                SaveResult(ChessMatch(engine1Path, engine2Path, gameOpening));
                 countdownEvent.Signal();
             });
         }
     }
 
-    static int ChessMatch(string whiteEnginePath, string blackEnginePath)
+    static int ChessMatch(string whiteEnginePath, string blackEnginePath, string initialMoves)
     {
         // Initialize communication with the engines
         UCIEngine engine1 = new UCIEngine(whiteEnginePath);
         UCIEngine engine2 = new UCIEngine(blackEnginePath);
 
-        string moves = "";
+        string moves = initialMoves;
         GameState state;
         int result = 0;
 
@@ -254,7 +272,9 @@ class ChessGame
         string engine2Path = "engine2.exe";
 
         sprt = new(0.05, 0.05, 0, 5);
-
+        db = new();
+        openings = db.GetRandomSample();
+        
         ThreadPool.SetMaxThreads(12, 12);
         RunChessMatches(engine1Path, engine2Path);
         countdownEvent.Wait();

@@ -9,6 +9,7 @@
     </PropertyGroup>
 
     <ItemGroup>
+      <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.0" />
       <PackageReference Include="pythonnet" Version="3.1.0-preview2023-11-04" />
     </ItemGroup>
 
