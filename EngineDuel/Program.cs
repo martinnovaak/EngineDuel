@@ -159,9 +159,12 @@ class ChessGame
     
     private static void ChessMatch(string whiteEnginePath, string blackEnginePath, int coefficient)
     {
-        if (openings.Count < 10)
+        const int minimumOpeningsCount = 10;
+        const int openingsToRetrieve = 20;
+        
+        if (openings.Count < minimumOpeningsCount)
         {
-            Database.GetRandomSample(openings, 20);
+            Database.GetRandomSample(openings, openingsToRetrieve);
         }
         
         string gameOpening;
@@ -190,6 +193,11 @@ class ChessGame
         int result = 0;
 
         PGN pgn = new(engine1.getName(), engine2.getName());
+        foreach (string move in moves.Split(" ", StringSplitOptions.RemoveEmptyEntries))
+        {
+            pgn.PlayMove(move);
+        }
+        
         // Game loop
         while (true)
         {
