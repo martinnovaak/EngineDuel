@@ -34,7 +34,6 @@ class ChessGame
     private static readonly object consoleLock = new ();
 
     private static ConcurrentStack<string> openings;
-    private static Database db;
 
     private static SPRT sprt;
     
@@ -160,17 +159,15 @@ class ChessGame
     
     private static void ChessMatch(string whiteEnginePath, string blackEnginePath, int coefficient)
     {
+        if (openings.Count < 10)
+        {
+            Database.GetRandomSample(openings, 20);
+        }
+        
         string gameOpening;
         if (!openings.TryPop(out gameOpening))
         {
-            // Repopulate openings stack if it's empty
-            db.GetRandomSample(openings);
-
-            // Try again to pop an opening
-            if (!openings.TryPop(out gameOpening))
-            {
-                gameOpening = "";
-            }
+            gameOpening = "";
         }
 
         int result1 = SingleGame(whiteEnginePath, blackEnginePath, gameOpening);
@@ -270,9 +267,8 @@ class ChessGame
         string engine2Path = "engine2.exe";
 
         sprt = new(0.05, 0.05, 0, 5);
-        db = new();
         openings = new();
-        db.GetRandomSample(openings);
+        Database.GetRandomSample(openings, 50);
         
         ThreadPool.SetMaxThreads(12, 12);
         RunChessMatches(engine1Path, engine2Path);

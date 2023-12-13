@@ -4,9 +4,9 @@ using Microsoft.Data.Sqlite;
 
 namespace EngineDuel;
 
-public class Database
+public static class Database
 {
-    public void GetRandomSample(ConcurrentStack<string> openings)
+    public static void GetRandomSample(ConcurrentStack<string> openings, int amount)
     {
         try
         {
@@ -18,7 +18,7 @@ public class Database
                 using (SqliteCommand cmd = connection.CreateCommand())
                 {
                     cmd.CommandText = "SELECT moves FROM openings " +
-                                      "WHERE rowid IN (SELECT rowid FROM openings ORDER BY random() LIMIT 20)";
+                                      $"WHERE rowid IN (SELECT rowid FROM openings ORDER BY random() LIMIT {amount})";
 
                     using (SqliteDataReader reader = cmd.ExecuteReader())
                     {
