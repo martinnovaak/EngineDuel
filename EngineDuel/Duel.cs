@@ -31,6 +31,8 @@ public class Duel
     private static ConcurrentStack<string> openings = new();
 
     private SPRT sprt;
+    private int initialTime;
+    private int increment;
     
     public void SetSPRT(double alpha, double beta, double elo0, double elo2)
     {
@@ -57,25 +59,20 @@ public class Duel
 
     public static bool IsMoveStringLegal(string move)
     {
+        // string has to have either 4 or 5 letters
         if (string.IsNullOrEmpty(move) || move.Length < 4 || move.Length > 5)
         {
-            // Invalid if the string is null, empty, or less than 4 characters
             return false;
         }
-
-        char fromFile = move[0];
-        char fromRank = move[1];
-        char toFile = move[2];
-        char toRank = move[3];
-
+        
         // Check if first and third letters are file letters (a-h)
-        if (!"abcdefgh".Contains(fromFile) || !"abcdefgh".Contains(toFile))
+        if (!"abcdefgh".Contains(move[0]) || !"abcdefgh".Contains(move[2]))
         {
             return false;
         }
 
         // Check if second and fourth letters are rank letters (1-8)
-        if (!"12345678".Contains(fromRank) || !"12345678".Contains(toRank))
+        if (!"12345678".Contains(move[1]) || !"12345678".Contains(move[3]))
         {
             return false;
         }
@@ -113,11 +110,10 @@ public class Duel
                 gameResult.IncrementLoses();
                 break;
         }
+        
+        (bool terminal, string testResult) = sprt.test(gameResult.Wins, gameResult.Draws, gameResult.Loses);
 
-        //var sprtInstance = new SPRT(0.05, 0.05, 0, 5);
-        var testResult = sprt.test(gameResult.Wins, gameResult.Draws, gameResult.Loses);
-
-        if (testResult.Item1)
+        if (terminal)
         {
             cancelToken.Cancel();
         }
@@ -125,7 +121,7 @@ public class Duel
         lock (consoleLock)
         {
             Console.WriteLine(
-                $"Wins: {gameResult.Wins}, draws: {gameResult.Draws}, loses: {gameResult.Loses}. {testResult.Item2}");
+                $"Wins: {gameResult.Wins}, draws: {gameResult.Draws}, loses: {gameResult.Loses}. {testResult}");
         }
     }
 
@@ -161,9 +157,9 @@ public class Duel
         };
     }
 
-    private void RunChessMatches(string engine1Path, string engine2Path)
+    private void RunChessMatches(string engine1Path, string engine2Path, int rounds)
     {
-        for (int i = 0; i < 200; i++)
+        for (int i = 0; i < rounds; i++)
         {
             ThreadPool.QueueUserWorkItem(_ => ChessMatch(engine1Path, engine2Path, 1), cancelToken.Token);
             ThreadPool.QueueUserWorkItem(_ => ChessMatch(engine2Path, engine1Path, -1), cancelToken.Token);
@@ -195,11 +191,11 @@ public class Duel
         countdownEvent.Signal();
     }
 
-    static int SingleGame(string whiteEnginePath, string blackEnginePath, string initialMoves)
+    int SingleGame(string whiteEnginePath, string blackEnginePath, string initialMoves)
     {
         // Initialize communication with the engines
-        UCIEngine engine1 = new UCIEngine(whiteEnginePath);
-        UCIEngine engine2 = new UCIEngine(blackEnginePath);
+        UCIEngine engine1 = new UCIEngine(whiteEnginePath, initialTime, increment);
+        UCIEngine engine2 = new UCIEngine(blackEnginePath, initialTime, increment);
 
         string moves = initialMoves;
         GameState state;
@@ -285,12 +281,15 @@ public class Duel
         return result;
     }
 
-    public void Run(string engine1Path, string engine2Path, int numberOfThreads)
+    public void Run(string engine1Path, string engine2Path, int numberOfThreads, int initialTime, int increment, int rounds)
     {
+        this.initialTime = initialTime;
+        this.increment = increment;
+        
         Database.GetRandomSample(openings, 50);
 
         ThreadPool.SetMaxThreads(numberOfThreads, numberOfThreads);
-        RunChessMatches(engine1Path, engine2Path);
+        RunChessMatches(engine1Path, engine2Path, rounds);
         countdownEvent.Wait();
         cancelToken.Cancel();
     }

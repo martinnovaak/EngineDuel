@@ -2,16 +2,25 @@
 
 namespace EngineDuel;
 
+public static class StringExtensions
+{
+    public static string ExtractName(this string input) => 
+        input.Split(' ').Skip(2).FirstOrDefault() ?? "unknown";
+}
+
 class UCIEngine
 {
     private Process process;
     private Stopwatch stopwatch;
-    private int time = 8000;
-    private int increment = 80;
+    private int time;
+    private int increment;
     private string name;
 
-    public UCIEngine(string enginePath)
+    public UCIEngine(string enginePath, int initialTime, int timeIncrement)
     {
+        time = initialTime;
+        increment = timeIncrement;
+        
         process = new Process();
         process.StartInfo.FileName = enginePath;
         process.StartInfo.UseShellExecute = false;
@@ -76,7 +85,7 @@ class UCIEngine
 
     private bool WaitForResponse(string expectedResponse)
     {
-        Stopwatch stopwatch = Stopwatch.StartNew();
+        Stopwatch timeoutStopwatch = Stopwatch.StartNew();
         int timeout = 5;
         
         string? response;
@@ -87,7 +96,7 @@ class UCIEngine
             {
                 name = response.ExtractName();
             }
-        } while (response != null && !response.Contains(expectedResponse) && stopwatch.Elapsed.TotalSeconds < timeout);
+        } while (response != null && !response.Contains(expectedResponse) && timeoutStopwatch.Elapsed.TotalSeconds < timeout);
 
         return response != null;
     }
