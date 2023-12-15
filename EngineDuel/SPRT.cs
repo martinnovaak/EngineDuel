@@ -40,7 +40,7 @@ public class SPRT
         double llr = gsprt(wins, draws, loses);
 
         bool terminal = false;
-        string message = "Keep playing";
+        string message = $"{lower:F4} < {llr:F4} < {upper:F4}, keep playing";
 
         if (llr > upper)
         {

@@ -1,4 +1,5 @@
-﻿using System.Runtime.InteropServices;
+﻿using System.Collections.Concurrent;
+using System.Runtime.InteropServices;
 using EngineDuel;
 
 public static class StringExtensions
@@ -31,6 +32,8 @@ class ChessGame
     
     private static readonly object fileLock = new ();
     private static readonly object consoleLock = new ();
+
+    private static ConcurrentStack<string> openings;
 
     private static SPRT sprt;
     
@@ -149,34 +152,52 @@ class ChessGame
     {
         for (int i = 0; i < 200; i++)
         {
-            // Queue threads for running chess matches
-            ThreadPool.QueueUserWorkItem(_ =>
-            {
-                SaveResult(ChessMatch(engine1Path, engine2Path));
-                SaveResult(-ChessMatch(engine2Path, engine1Path));
-                countdownEvent.Signal();
-            });
-
-            ThreadPool.QueueUserWorkItem(_ =>
-            {
-                SaveResult(-ChessMatch(engine2Path, engine1Path));
-                SaveResult(ChessMatch(engine1Path, engine2Path));
-                countdownEvent.Signal();
-            });
+            ThreadPool.QueueUserWorkItem(_ => ChessMatch(engine1Path, engine2Path, 1));
+            ThreadPool.QueueUserWorkItem(_ => ChessMatch(engine2Path, engine1Path, -1));
         }
     }
+    
+    private static void ChessMatch(string whiteEnginePath, string blackEnginePath, int coefficient)
+    {
+        const int minimumOpeningsCount = 10;
+        const int openingsToRetrieve = 20;
+        
+        if (openings.Count < minimumOpeningsCount)
+        {
+            Database.GetRandomSample(openings, openingsToRetrieve);
+        }
+        
+        string gameOpening;
+        if (!openings.TryPop(out gameOpening))
+        {
+            gameOpening = "";
+        }
 
-    static int ChessMatch(string whiteEnginePath, string blackEnginePath)
+        int result1 = SingleGame(whiteEnginePath, blackEnginePath, gameOpening);
+        SaveResult(coefficient * result1);
+
+        int result2 = -SingleGame(blackEnginePath, whiteEnginePath, gameOpening);
+        SaveResult(coefficient * result2);
+
+        countdownEvent.Signal();
+    }
+
+    static int SingleGame(string whiteEnginePath, string blackEnginePath, string initialMoves)
     {
         // Initialize communication with the engines
         UCIEngine engine1 = new UCIEngine(whiteEnginePath);
         UCIEngine engine2 = new UCIEngine(blackEnginePath);
 
-        string moves = "";
+        string moves = initialMoves;
         GameState state;
         int result = 0;
 
         PGN pgn = new(engine1.getName(), engine2.getName());
+        foreach (string move in moves.Split(" ", StringSplitOptions.RemoveEmptyEntries))
+        {
+            pgn.PlayMove(move);
+        }
+        
         // Game loop
         while (true)
         {
@@ -254,7 +275,9 @@ class ChessGame
         string engine2Path = "engine2.exe";
 
         sprt = new(0.05, 0.05, 0, 5);
-
+        openings = new();
+        Database.GetRandomSample(openings, 50);
+        
         ThreadPool.SetMaxThreads(12, 12);
         RunChessMatches(engine1Path, engine2Path);
         countdownEvent.Wait();
