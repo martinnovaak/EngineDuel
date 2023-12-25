@@ -111,7 +111,7 @@ public class Duel
                 break;
         }
         
-        (bool terminal, string testResult) = sprt.test(gameResult.Wins, gameResult.Draws, gameResult.Loses);
+        (bool terminal, string testResult) = sprt.Test(gameResult.Wins, gameResult.Draws, gameResult.Loses);
 
         if (terminal)
         {
@@ -157,12 +157,44 @@ public class Duel
         };
     }
 
-    private void RunChessMatches(string engine1Path, string engine2Path, int rounds)
+    private void RunChessMatches(string engine1Path, string engine2Path, int rounds, int numberOfThreads)
     {
+        Semaphore semaphore = new Semaphore(numberOfThreads, numberOfThreads);
         for (int i = 0; i < rounds; i++)
         {
-            ThreadPool.QueueUserWorkItem(_ => ChessMatch(engine1Path, engine2Path, 1), cancelToken.Token);
-            ThreadPool.QueueUserWorkItem(_ => ChessMatch(engine2Path, engine1Path, -1), cancelToken.Token);
+            semaphore.WaitOne(); 
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                try
+                {
+                    ChessMatch(engine1Path, engine2Path, 1);
+                }
+                finally
+                {
+                    if (!cancelToken.IsCancellationRequested)
+                    {
+                        countdownEvent.Signal();
+                    }
+                    semaphore.Release(); 
+                }
+            }, cancelToken.Token);
+
+            semaphore.WaitOne(); 
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                try
+                {
+                    ChessMatch(engine2Path, engine1Path, -1);
+                }
+                finally
+                {
+                    if (!cancelToken.IsCancellationRequested)
+                    {
+                        countdownEvent.Signal();
+                    }
+                    semaphore.Release(); 
+                }
+            }, cancelToken.Token);
         }
     }
 
@@ -187,12 +219,15 @@ public class Duel
 
         int result2 = -SingleGame(blackEnginePath, whiteEnginePath, gameOpening);
         SaveResult(coefficient * result2);
-
-        countdownEvent.Signal();
     }
 
     int SingleGame(string whiteEnginePath, string blackEnginePath, string initialMoves)
     {
+        if (cancelToken.IsCancellationRequested)
+        {
+            return 0;
+        }
+        
         // Initialize communication with the engines
         UCIEngine engine1 = new UCIEngine(whiteEnginePath, initialTime, increment);
         UCIEngine engine2 = new UCIEngine(blackEnginePath, initialTime, increment);
@@ -201,7 +236,7 @@ public class Duel
         GameState state;
         int result = 0;
 
-        PGN pgn = new(engine1.getName(), engine2.getName());
+        PGN pgn = new(engine1.GetName(), engine2.GetName());
         foreach (string move in moves.Split(" ", StringSplitOptions.RemoveEmptyEntries))
         {
             pgn.PlayMove(move);
@@ -281,16 +316,25 @@ public class Duel
         return result;
     }
 
-    public void Run(string engine1Path, string engine2Path, int numberOfThreads, int initialTime, int increment, int rounds)
+    public void Run(string engine1Path, string engine2Path, int numberOfThreads, int initTime, int incr, int rounds)
     {
-        this.initialTime = initialTime;
-        this.increment = increment;
+        initialTime = initTime;
+        increment = incr;
         
         Database.GetRandomSample(openings, 50);
 
-        ThreadPool.SetMaxThreads(numberOfThreads, numberOfThreads);
-        RunChessMatches(engine1Path, engine2Path, rounds);
-        countdownEvent.Wait();
-        cancelToken.Cancel();
+        countdownEvent = new(2 * rounds);
+        RunChessMatches(engine1Path, engine2Path, rounds, numberOfThreads);
+        
+        Task.WhenAny(Task.Run(() => countdownEvent.Wait()), Task.Delay(Timeout.Infinite, cancelToken.Token))
+            .ContinueWith(_ =>
+            {
+                // Cancel the countdown event if it's still active
+                countdownEvent.Dispose();
+                
+                // Cancel the token to ensure other threads know about cancellation
+                cancelToken.Cancel();
+            })
+            .Wait();
     }
 }
