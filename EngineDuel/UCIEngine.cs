@@ -2,29 +2,41 @@
 
 namespace EngineDuel;
 
+public static class StringExtensions
+{
+    public static string ExtractName(this string input) => 
+        input.Split(' ').Skip(2).FirstOrDefault() ?? "unknown";
+}
+
 class UCIEngine
 {
     private Process process;
     private Stopwatch stopwatch;
-    private int time = 8000;
-    private int increment = 80;
+    private int time = 10000;
+    private int increment = 100;
     private string name;
 
-    public UCIEngine(string enginePath)
+    public UCIEngine(string enginePath, int initialTime, int timeIncrement)
     {
+        time = initialTime;
+        increment = timeIncrement;
+        
         process = new Process();
         process.StartInfo.FileName = enginePath;
         process.StartInfo.UseShellExecute = false;
         process.StartInfo.RedirectStandardInput = true;
         process.StartInfo.RedirectStandardOutput = true;
         process.StartInfo.CreateNoWindow = true;
+        
         process.Start();
+        
+        process.PriorityClass = ProcessPriorityClass.High; // Set the priority to High
         
         stopwatch = new();
         InitializeEngine();
     }
 
-    public string getName()
+    public string GetName()
     {
         return name;
     }
@@ -49,13 +61,20 @@ class UCIEngine
 
     public string GetBestMove()
     {
-        SendCommand($"go wtime {time} btime {time} winc{increment} binc{increment}");
         
+        SendCommand($"go wtime {time} btime {time} winc{increment} binc{increment}");
+        //TimeSpan startProcessorTime = process.TotalProcessorTime;
         stopwatch.Start();
         
         string bestMove = WaitForBestMove();
         
         stopwatch.Stop();
+        
+        //TimeSpan endProcessorTime = process.TotalProcessorTime;
+        
+        //TimeSpan cpuTimeUsed = endProcessorTime - startProcessorTime;
+        //if (Math.Abs(cpuTimeUsed.TotalMilliseconds - stopwatch.ElapsedMilliseconds) > 50.0) 
+        //Console.WriteLine($"{cpuTimeUsed.TotalMilliseconds}, {stopwatch.ElapsedMilliseconds}");
         
         time += (increment - (int)stopwatch.ElapsedMilliseconds);
 
@@ -76,7 +95,7 @@ class UCIEngine
 
     private bool WaitForResponse(string expectedResponse)
     {
-        Stopwatch stopwatch = Stopwatch.StartNew();
+        Stopwatch timeoutStopwatch = Stopwatch.StartNew();
         int timeout = 5;
         
         string? response;
@@ -87,7 +106,7 @@ class UCIEngine
             {
                 name = response.ExtractName();
             }
-        } while (response != null && !response.Contains(expectedResponse) && stopwatch.Elapsed.TotalSeconds < timeout);
+        } while (response != null && !response.Contains(expectedResponse) && timeoutStopwatch.Elapsed.TotalSeconds < timeout);
 
         return response != null;
     }

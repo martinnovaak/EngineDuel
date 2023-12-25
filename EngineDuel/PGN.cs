@@ -25,7 +25,7 @@ public class PGN
         'r', 'n', 'b', 'q', 'k', 'b', 'n', 'r'
     };
 
-    public enum Square
+    private enum Square
     {
         A1, B1, C1, D1, E1, F1, G1, H1,
         A2, B2, C2, D2, E2, F2, G2, H2,
@@ -68,7 +68,6 @@ public class PGN
         string from = squares[0];
         string to = squares[1];
         string promotion = squares.Length > 2 ? squares[2] : "";
-
         Square squareFrom = SquareMap[from];
         Square squareTo = SquareMap[to];
         char pieceChar = ChessBoard[(int)squareFrom];
@@ -120,6 +119,14 @@ public class PGN
         }
 
         moves.Add(pgnMove);
+    }
+
+    public void AddComment(string comment)
+    {
+        if (moves.Any())
+        {
+            moves[^1] += $" {{{comment}}}";
+        }
     }
 
     public string GetGame(string result, int currentRound)
