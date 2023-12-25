@@ -122,6 +122,16 @@ public class Duel
         {
             Console.WriteLine(
                 $"Wins: {gameResult.Wins}, draws: {gameResult.Draws}, loses: {gameResult.Loses}. {testResult}");
+            if (roundCounter % 10 == 0)
+            {
+                var wld = sprt.EloWld(gameResult.Wins, gameResult.Draws, gameResult.Loses);
+                
+                double e1 = wld.Item1;
+                double e2 = wld.Item2;
+                double e3 = wld.Item3;
+
+                Console.WriteLine($"ELO: {e2:F3} +- {(e3 - e1) / 2:F3} [{e1:F3}, {e3:F3}]");
+            }
         }
     }
 
