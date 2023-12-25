@@ -12,8 +12,8 @@ class UCIEngine
 {
     private Process process;
     private Stopwatch stopwatch;
-    private int time;
-    private int increment;
+    private int time = 10000;
+    private int increment = 100;
     private string name;
 
     public UCIEngine(string enginePath, int initialTime, int timeIncrement)
@@ -27,13 +27,16 @@ class UCIEngine
         process.StartInfo.RedirectStandardInput = true;
         process.StartInfo.RedirectStandardOutput = true;
         process.StartInfo.CreateNoWindow = true;
+        
         process.Start();
+        
+        process.PriorityClass = ProcessPriorityClass.High; // Set the priority to High
         
         stopwatch = new();
         InitializeEngine();
     }
 
-    public string getName()
+    public string GetName()
     {
         return name;
     }
@@ -58,13 +61,20 @@ class UCIEngine
 
     public string GetBestMove()
     {
-        SendCommand($"go wtime {time} btime {time} winc{increment} binc{increment}");
         
+        SendCommand($"go wtime {time} btime {time} winc{increment} binc{increment}");
+        //TimeSpan startProcessorTime = process.TotalProcessorTime;
         stopwatch.Start();
         
         string bestMove = WaitForBestMove();
         
         stopwatch.Stop();
+        
+        //TimeSpan endProcessorTime = process.TotalProcessorTime;
+        
+        //TimeSpan cpuTimeUsed = endProcessorTime - startProcessorTime;
+        //if (Math.Abs(cpuTimeUsed.TotalMilliseconds - stopwatch.ElapsedMilliseconds) > 50.0) 
+        //Console.WriteLine($"{cpuTimeUsed.TotalMilliseconds}, {stopwatch.ElapsedMilliseconds}");
         
         time += (increment - (int)stopwatch.ElapsedMilliseconds);
 
