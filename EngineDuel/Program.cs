@@ -35,6 +35,12 @@ class Options
     
     [Option("timecontrol", Required = true, HelpText = timeControlHelpText)]
     public string TimeControl { get; set; }
+    
+    [Option("setoption", Required = false, Separator = ',', HelpText = "Set options for the chess engines.")]
+    public IEnumerable<string> SetOptions { get; set; }
+    
+    [Option("tuningfile", Required = false, HelpText = "Path to the CSV file containing tuning parameters.")]
+    public string TuningParametersFile { get; set; }
 }
 
 class Program  {  
@@ -52,20 +58,91 @@ class Program  {
                 
                 int numberOfThreads = options.NumberOfThreads;
                 int rounds = options.NumberOfRounds;
-                
-                if (TryParseTimeControl(options.TimeControl, out int initialTime, out int increment))
+
+                List<(string, (double, double))> opts = new();
+
+                List<(string, double)> engineOptions = options.SetOptions
+                    .Select(option => option.Split('='))
+                    .Where(pair => pair.Length == 2)
+                    .Select(pair =>
+                    {
+                        string optionName = pair[0];
+                        double optionValue;
+                        double.TryParse(pair[1], NumberStyles.Float, CultureInfo.InvariantCulture, out optionValue);
+                        return (optionName, optionValue);
+                    })
+                    .ToList();
+
+                foreach (var op in engineOptions)
                 {
-                    duel.Run(engine1Path, engine2Path, numberOfThreads, initialTime, increment, rounds);
+                    opts.Add((op.Item1, (op.Item2, 0.0)));
+                }
+                
+                foreach (var opt in engineOptions)
+                {
+                    Console.WriteLine($"{opt.Item1}, {opt.Item2}");
+                }
+                
+                if (!TryParseTimeControl(options.TimeControl, out int initialTime, out int increment))
+                {
+                    Console.WriteLine("Failed to parse time control. Please provide a valid format (e.g., '60+1').");
+                }
+                
+                if (!string.IsNullOrEmpty(options.TuningParametersFile))
+                {
+                    LoadTuningParametersFromCsv(options.TuningParametersFile, out var tuningOptions);
+
+                    foreach (var opt in tuningOptions)
+                    {
+                        Console.WriteLine($"{opt.Item1}, {opt.Item2}, {opt.Item3}");
+                    }
+                    
                 }
                 else
                 {
-                    Console.WriteLine("Failed to parse time control. Please provide a valid format (e.g., '60+1').");
+                    duel.Run(engine1Path, engine2Path, numberOfThreads, initialTime, increment, rounds, engineOptions);
                 }
             })
             .WithNotParsed(errors => 
             {
                 Console.WriteLine("Failed to parse command-line arguments.");
             });
+    }
+    
+    private static void LoadTuningParametersFromCsv(string filePath, out List<(string, double, double)> tuningOptions)
+    {
+        tuningOptions = new List<(string, double, double)>();
+
+        try
+        {
+            var lines = File.ReadAllLines(filePath);
+
+            foreach (var line in lines.Skip(1)) // Skip header line
+            {
+                var parts = line.Split(',');
+                if (parts.Length == 3)
+                {
+                    var option = parts[0].Trim();
+                    if (double.TryParse(parts[1].Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var defaultValue) &&
+                        double.TryParse(parts[2].Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var stepValue))
+                    {
+                        tuningOptions.Add((option, defaultValue, stepValue));
+                    }
+                    else
+                    {
+                        Console.WriteLine($"Invalid numeric values in CSV file: {line}");
+                    }
+                }
+                else
+                {
+                    Console.WriteLine($"Invalid line in CSV file: {line}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading tuning parameters from CSV file: {ex.Message}");
+        }
     }
     
     private static bool TryParseTimeControl(string timeControl, out int initialTime, out int increment)

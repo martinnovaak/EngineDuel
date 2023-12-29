@@ -30,9 +30,12 @@ public class Duel
 
     private static ConcurrentStack<string> openings = new();
 
+    private static bool detailedPrint = true;  
+
     private SPRT sprt;
     private int initialTime;
     private int increment;
+    private List<(string, double)> engineOptions;
     
     public void SetSPRT(double alpha, double beta, double elo0, double elo2)
     {
@@ -120,11 +123,20 @@ public class Duel
 
         lock (consoleLock)
         {
-            Console.WriteLine(
-                $"Wins: {gameResult.Wins}, draws: {gameResult.Draws}, loses: {gameResult.Loses}. {testResult}");
+            string detailedStringPrint =
+                $"Wins: {gameResult.Wins}, draws: {gameResult.Draws}, loses: {gameResult.Loses}. {testResult}";
+            if (Duel.detailedPrint == true)
+            {
+                Console.WriteLine(detailedStringPrint);
+            }
+            
             if (roundCounter % 10 == 0)
             {
-                var wld = sprt.EloWld(gameResult.Wins, gameResult.Draws, gameResult.Loses);
+                if (Duel.detailedPrint == false)
+                {
+                    Console.WriteLine(detailedStringPrint);
+                }
+                var wld = sprt.EloWld(wins: gameResult.Wins, losses: gameResult.Loses, draws: gameResult.Draws);
                 
                 double e1 = wld.Item1;
                 double e2 = wld.Item2;
@@ -224,14 +236,14 @@ public class Duel
             gameOpening = "";
         }
 
-        int result1 = SingleGame(whiteEnginePath, blackEnginePath, gameOpening);
+        int result1 = SingleGame(whiteEnginePath, blackEnginePath, gameOpening, coefficient);
         SaveResult(coefficient * result1);
 
-        int result2 = -SingleGame(blackEnginePath, whiteEnginePath, gameOpening);
+        int result2 = -SingleGame(blackEnginePath, whiteEnginePath, gameOpening, -coefficient);
         SaveResult(coefficient * result2);
     }
 
-    int SingleGame(string whiteEnginePath, string blackEnginePath, string initialMoves)
+    int SingleGame(string whiteEnginePath, string blackEnginePath, string initialMoves, int colorCoefficient)
     {
         if (cancelToken.IsCancellationRequested)
         {
@@ -241,6 +253,20 @@ public class Duel
         // Initialize communication with the engines
         UCIEngine engine1 = new UCIEngine(whiteEnginePath, initialTime, increment);
         UCIEngine engine2 = new UCIEngine(blackEnginePath, initialTime, increment);
+
+        foreach (var option in engineOptions)
+        {
+            if (colorCoefficient == 1)
+            {
+                engine1.SetOption(option.Item1, option.Item2);
+                //engine2.SetOption(option.Item1, option.Item2.Item2);
+            }
+            else
+            {
+                //engine1.SetOption(option.Item1, option.Item2.Item2);
+                engine2.SetOption(option.Item1, option.Item2);
+            }
+        }
 
         string moves = initialMoves;
         GameState state;
@@ -252,9 +278,18 @@ public class Duel
             pgn.PlayMove(move);
         }
 
+        int numberOfMoves = 1;
         // Game loop
         while (true)
         {
+            if (numberOfMoves > 150)
+            {
+                result = Finishgame(GameState.Draw, Color.White, ref pgn);
+                engine1.QuitEngine();
+                engine2.QuitEngine();
+                break;
+            }
+            
             if (cancelToken.IsCancellationRequested)
             {
                 engine1.QuitEngine();
@@ -326,14 +361,18 @@ public class Duel
         return result;
     }
 
-    public void Run(string engine1Path, string engine2Path, int numberOfThreads, int initTime, int incr, int rounds)
+    public void Run(string engine1Path, string engine2Path, int numberOfThreads, int initTime, int incr, int rounds, List<(string, double)> options)
     {
+        gameResult = new();
+        cancelToken = new();
+        countdownEvent = new(2 * rounds);
+        
         initialTime = initTime;
         increment = incr;
+        engineOptions = options;
         
         Database.GetRandomSample(openings, 50);
-
-        countdownEvent = new(2 * rounds);
+        
         RunChessMatches(engine1Path, engine2Path, rounds, numberOfThreads);
         
         Task.WhenAny(Task.Run(() => countdownEvent.Wait()), Task.Delay(Timeout.Infinite, cancelToken.Token))
@@ -346,5 +385,15 @@ public class Duel
                 cancelToken.Cancel();
             })
             .Wait();
+    }
+
+    public (int, int, int) GetWLD()
+    {
+        return (gameResult.Wins, gameResult.Loses, gameResult.Draws);
+    }
+
+    public void disableDetailedPrint()
+    {
+        detailedPrint = false;
     }
 }

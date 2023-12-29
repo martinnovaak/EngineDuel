@@ -18,13 +18,42 @@ public class SPRT
     // Abramowitz and Stegun
     public double PhiInv(double p)
     {
-        double t = Math.Sqrt(-2.0 * Math.Log(Math.Min(p, 1 - p)));
-        double a = 0.010328, b = 0.802853, c = 2.515517;
-        double d = 0.001308, e = 0.189269, f = 1.432788;
-        
-        t -= ((a * t + b) * t + c) / (((d * t + e) * t + f) * t + 1.0);
+        double a0 = 2.50662823884;
+        double a1 = -18.61500062529;
+        double a2 = 41.39119773534;
+        double a3 = -25.44106049637;
+        double b1 = -8.47351093090;
+        double b2 = 23.08336743743;
+        double b3 = -21.06224101826;
+        double b4 = 3.13082909833;
+        double c0 = -2.78718931138;
+        double c1 = -2.29796479134;
+        double c2 = 4.85014127135;
+        double c3 = 2.32121276858;
+        double d1 = 3.54388924762;
+        double d2 = 1.63706781897;
 
-        return p >= 0.5 ? t : -t;
+        double x = p - 0.5;
+        double result;
+
+        if (Math.Abs(x) < 0.42)
+        {
+            double y = x * x;
+            result = x * (((a3 * y + a2) * y + a1) * y + a0) /
+                     ((((b4 * y + b3) * y + b2) * y + b1) * y + 1);
+        }
+        else
+        {
+            double y = Math.Sqrt(-Math.Log(Math.Min(p, 1 - p)));
+            result = (((c3 * y + c2) * y + c1) * y + c0) /
+                     ((d2 * y + d1) * y + 1);
+            if (x < 0)
+            {
+                result = -result;
+            }
+        }
+
+        return result;
     }
 
     public double Elo(double score)

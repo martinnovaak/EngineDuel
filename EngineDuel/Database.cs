@@ -10,7 +10,7 @@ public static class Database
     {
         try
         {
-            using (SqliteConnection connection = new SqliteConnection("Data Source=openings.db"))
+            using (SqliteConnection connection = new SqliteConnection("Data Source=pohl.db"))
             {
                 if (connection.State != ConnectionState.Open)
                     connection.Open();

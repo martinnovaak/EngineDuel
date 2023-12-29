@@ -59,6 +59,11 @@ class UCIEngine
         SendCommand($"position {fen}");
     }
 
+    public void SetOption(string optionID, double value)
+    {
+        SendCommand($"setoption name {optionID} value {value}");
+    }
+
     public string GetBestMove()
     {
         
@@ -142,12 +147,19 @@ class UCIEngine
     // Shut down the engine
     public void QuitEngine()
     {
-        SendCommand("stop");
+        try
+        {
+            SendCommand("quit");
+            process.WaitForExit();
+            process.Close();
+        }
+        catch (IOException ex)
+        {
+            Console.WriteLine($"Error while quitting engine: {ex.Message}");
         
-        SendCommand("quit");
-        
-        WaitForResponse("uciok");
-        
-        process.StandardInput.Close();
+            // Optionally, you can attempt to clear or reset the process.
+            // For example, you may create a new process instance if needed.
+            // process = new Process();
+        }
     }
 }
