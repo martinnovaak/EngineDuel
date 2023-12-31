@@ -41,26 +41,38 @@ class Program  {
 
                 List<(string, (double, double))> opts = new();
 
-                List<(string, double)> engineOptions = options.SetOptions
-                    .Select(option => option.Split('='))
-                    .Where(pair => pair.Length == 2)
-                    .Select(pair =>
-                    {
-                        string optionName = pair[0];
-                        double optionValue;
-                        double.TryParse(pair[1], NumberStyles.Float, CultureInfo.InvariantCulture, out optionValue);
-                        return (optionName, optionValue);
-                    })
-                    .ToList();
+				List<(string, double, double)> engineOptions = options.SetOptions
+	                .Select(option => option.Split('='))
+	                .Where(pair => pair.Length == 3)
+	                .Select(pair =>
+	                {
+		                string optionName = pair[0];
+		                double optionValue;
+		                double optionStep;
 
-                foreach (var op in engineOptions)
+		                if (double.TryParse(pair[1], NumberStyles.Float, CultureInfo.InvariantCulture, out optionValue) &&
+			                double.TryParse(pair[2], NumberStyles.Float, CultureInfo.InvariantCulture, out optionStep))
+		                {
+			                return (optionName, optionValue, optionStep);
+		                }
+		                else
+		                {
+			                // Handle the case where parsing fails (e.g., log an error, throw an exception, etc.)
+			                // For now, returning a default value with NaN for both doubles
+			                return (optionName, double.NaN, double.NaN);
+		                }
+	                })
+	                .Where(tuple => !double.IsNaN(tuple.Item2) && !double.IsNaN(tuple.Item3)) // Filter out tuples with NaN values
+	                .ToList();
+
+				foreach (var op in engineOptions)
                 {
                     opts.Add((op.Item1, (op.Item2, 0.0)));
                 }
                 
                 foreach (var opt in engineOptions)
                 {
-                    Console.WriteLine($"{opt.Item1}, {opt.Item2}");
+                    Console.WriteLine($"{opt.Item1}, {opt.Item2}, {opt.Item3}");
                 }
                 
                 if (!TryParseTimeControl(options.TimeControl, out int initialTime, out int increment))
