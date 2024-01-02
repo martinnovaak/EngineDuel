@@ -1,6 +1,13 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EngineDuel", "EngineDuel\EngineDuel.csproj", "{EFEEA444-700B-472F-8536-230EF2E6F0C9}"
+# Visual Studio Version 17
+VisualStudioVersion = 17.8.34330.188
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "EngineDuel", "EngineDuel\EngineDuel.csproj", "{EFEEA444-700B-472F-8536-230EF2E6F0C9}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Optimization", "Optimization\Optimization.csproj", "{F5A8E924-4E5D-4637-ABDD-E948DF34E2F2}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CraftHub", "CraftHub\CraftHub.csproj", "{5DCC4EFE-1CBA-4D37-BF18-168C2BD014B4}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -12,5 +19,16 @@ Global
 		{EFEEA444-700B-472F-8536-230EF2E6F0C9}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{EFEEA444-700B-472F-8536-230EF2E6F0C9}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{EFEEA444-700B-472F-8536-230EF2E6F0C9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F5A8E924-4E5D-4637-ABDD-E948DF34E2F2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F5A8E924-4E5D-4637-ABDD-E948DF34E2F2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F5A8E924-4E5D-4637-ABDD-E948DF34E2F2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F5A8E924-4E5D-4637-ABDD-E948DF34E2F2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5DCC4EFE-1CBA-4D37-BF18-168C2BD014B4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5DCC4EFE-1CBA-4D37-BF18-168C2BD014B4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5DCC4EFE-1CBA-4D37-BF18-168C2BD014B4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5DCC4EFE-1CBA-4D37-BF18-168C2BD014B4}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
 	EndGlobalSection
 EndGlobal

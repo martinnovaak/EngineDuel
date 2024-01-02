@@ -12,6 +12,7 @@ public class Optimizer
 	private int gameIncrement;
 	private List<(string, double, double)> engineOptions;
 	private ILogger logger;
+	private CancellationTokenSource cancellationToken;
 
 	public int GetScore(double[] perturbedThetaPositive, double[] perturbedThetaNegative)
 	{
@@ -25,10 +26,10 @@ public class Optimizer
 			optionsEngine2.Add((engineOptions[i].Item1, perturbedThetaNegative[i]));
 		}
 
-		Duel duel = new();
+		Duel duel = new(logger);
 		duel.SetSPRT(0.01, 0.01, -5, 5);
 		duel.disableDetailedPrint();
-		duel.Run(enginePath1, enginePath2, numberOfThreads, gameTime, gameIncrement, numberOfRounds, optionsEngine1, optionsEngine2);
+		duel.Run(enginePath1, enginePath2, numberOfThreads, gameTime, gameIncrement, numberOfRounds, optionsEngine1, optionsEngine2, cancellationToken);
 
 		(int wins, int loses, int draws) = duel.GetWLD();
 
@@ -63,6 +64,12 @@ public class Optimizer
 
 		for (int iteration = 0; iteration < maxIterations; iteration++)
 		{
+			if (cancellationToken.IsCancellationRequested)
+			{
+				printPoint($"Cancellation requested in iteration number: {t}, Best values: ", theta);
+				break;
+			}
+
 			double[] aK = a.Select((value, index) => value / Math.Pow(t + maxIterations / 10, 0.601)).ToArray(); 
 			double[] cK = c.Select((value, index) => value / Math.Pow(t, 0.102)).ToArray();
 
@@ -96,6 +103,12 @@ public class Optimizer
 
 		for (int iteration = 0; iteration < maxIterations; iteration++)
 		{
+			if (cancellationToken.IsCancellationRequested)
+			{
+				printPoint($"Cancellation requested in iteration number: {t}, Best values: ", theta);
+				break;
+			}
+
 			double[] aK = a.Select((value, index) => value / Math.Pow((t - 1) * 4 * numberOfRounds + maxIterations / 10, 0.601)).ToArray();
 			double[] cK = c.Select((value, index) => value / Math.Pow((t - 1) * 4 * numberOfRounds + 1, 0.102)).ToArray();
 
@@ -126,6 +139,7 @@ public class Optimizer
 	public Optimizer(string enginePath1, string enginePath2, int numberOfThreads, int numberOfRounds, int gameTime, int gameIncrement, List<(string, double, double)> engineOptions, ILogger logger = null)
 	{
 		this.enginePath1 = enginePath1;
+		this.enginePath2 = enginePath2;
 		this.numberOfThreads = numberOfThreads;
 		this.numberOfRounds = numberOfRounds;
 		this.gameTime = gameTime;
@@ -134,8 +148,9 @@ public class Optimizer
 		this.logger = logger ?? new ConsoleLogger(); // Use the provided logger or default to ConsoleLogger
 	}
 
-	public void Optimize()
+	public void Optimize(CancellationTokenSource guiCancellationToken)
 	{
+		cancellationToken = guiCancellationToken;
 		double[] start = engineOptions.Select(item => item.Item2).ToArray();
 		var result = AdamWithSpsa(start, 100);
 

@@ -238,6 +238,11 @@ public class Duel
 
 	private void ChessMatch(string whiteEnginePath, string blackEnginePath, int coefficient)
 	{
+		if (cancelToken.IsCancellationRequested)
+		{
+			return;
+		}
+
 		const int minimumOpeningsCount = 10;
 		const int openingsToRetrieve = 20;
 
@@ -267,8 +272,8 @@ public class Duel
 		}
 
 		// Initialize communication with the engines
-		UCIEngine engine1 = new UCIEngine(whiteEnginePath, initialTime, increment);
-		UCIEngine engine2 = new UCIEngine(blackEnginePath, initialTime, increment);
+		UCIEngine engine1 = new UCIEngine(whiteEnginePath, initialTime, increment, logger);
+		UCIEngine engine2 = new UCIEngine(blackEnginePath, initialTime, increment, logger);
 
 
 		foreach (var option in engine1Options)
@@ -388,10 +393,10 @@ public class Duel
 		return result;
 	}
 
-	public void Run(string engine1Path, string engine2Path, int numberOfThreads, int initTime, int incr, int rounds, List<(string, double)> options1, List<(string, double)> options2)
+	public async Task Run(string engine1Path, string engine2Path, int numberOfThreads, int initTime, int incr, int rounds, List<(string, double)> options1, List<(string, double)> options2, CancellationTokenSource guiCancellationToken)
 	{
 		gameResult = new();
-		cancelToken = new();
+		cancelToken = guiCancellationToken;
 		countdownEvent = new(2 * rounds);
 
 		initialTime = initTime;

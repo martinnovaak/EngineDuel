@@ -10,16 +10,20 @@ public static class StringExtensions
 
 class UCIEngine
 {
+	private string path;
 	private Process process;
 	private Stopwatch stopwatch;
 	private int time = 10000;
 	private int increment = 100;
 	private string name;
+	private ILogger logger;
 
-	public UCIEngine(string enginePath, int initialTime, int timeIncrement)
+	public UCIEngine(string enginePath, int initialTime, int timeIncrement, ILogger logger)
 	{
+		path = enginePath;
 		time = initialTime;
 		increment = timeIncrement;
+		this.logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
 		process = new Process();
 		process.StartInfo.FileName = enginePath;
@@ -28,12 +32,26 @@ class UCIEngine
 		process.StartInfo.RedirectStandardOutput = true;
 		process.StartInfo.CreateNoWindow = true;
 
-		process.Start();
+		try
+		{
+			process.Start();
+		}
+		catch (Exception ex)
+		{
+			logger.Log($"Error while starting the engine: {ex.Message}");
+			// You might want to handle the exception here based on your requirements.
+		}
 
 		process.PriorityClass = ProcessPriorityClass.High; // Set the priority to High
 
 		stopwatch = new();
 		InitializeEngine();
+	}
+
+	// Additional method to check if the engine process is still running
+	private bool IsEngineProcessRunning()
+	{
+		return !process.HasExited;
 	}
 
 	public string GetName()
@@ -46,7 +64,7 @@ class UCIEngine
 		SendCommand("uci");
 		if (!WaitForResponse("uciok"))
 		{
-			Console.WriteLine("Engine did not respond.\n");
+			logger.Log($"Engine {path} did not respond.");
 		}
 	}
 

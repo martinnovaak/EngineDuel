@@ -60,49 +60,12 @@ class Program
 				int numberOfThreads = options.NumberOfThreads;
 				int rounds = options.NumberOfRounds;
 
-				List<(string, (double, double))> opts = new();
-
-				List<(string, double)> engineOptions = options.SetOptions
-					.Select(option => option.Split('='))
-					.Where(pair => pair.Length == 2)
-					.Select(pair =>
-					{
-						string optionName = pair[0];
-						double optionValue;
-						double.TryParse(pair[1], NumberStyles.Float, CultureInfo.InvariantCulture, out optionValue);
-						return (optionName, optionValue);
-					})
-					.ToList();
-
-				foreach (var op in engineOptions)
-				{
-					opts.Add((op.Item1, (op.Item2, 0.0)));
-				}
-
-				foreach (var opt in engineOptions)
-				{
-					Console.WriteLine($"{opt.Item1}, {opt.Item2}");
-				}
-
 				if (!TryParseTimeControl(options.TimeControl, out int initialTime, out int increment))
 				{
 					Console.WriteLine("Failed to parse time control. Please provide a valid format (e.g., '60+1').");
 				}
 
-				if (!string.IsNullOrEmpty(options.TuningParametersFile))
-				{
-					LoadTuningParametersFromCsv(options.TuningParametersFile, out var tuningOptions);
-
-					foreach (var opt in tuningOptions)
-					{
-						Console.WriteLine($"{opt.Item1}, {opt.Item2}, {opt.Item3}");
-					}
-
-				}
-				else
-				{
-					duel.Run(engine1Path, engine2Path, numberOfThreads, initialTime, increment, rounds, engineOptions, new());
-				}
+				duel.Run(engine1Path, engine2Path, numberOfThreads, initialTime, increment, rounds, new(), new(), new());
 			})
 			.WithNotParsed(errors =>
 			{
