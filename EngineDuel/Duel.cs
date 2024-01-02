@@ -3,348 +3,433 @@ using System.Runtime.InteropServices;
 
 namespace EngineDuel;
 
+public interface ILogger
+{
+	void Log(string message);
+}
+
+public class ConsoleLogger : ILogger
+{
+	public void Log(string message)
+	{
+		Console.WriteLine(message);
+	}
+}
+
 public struct GameResult
 {
-    private int wins;
-    private int draws;
-    private int loses;
-    
-    public int Wins => wins;
-    public int Draws => draws;
-    public int Loses => loses;
-    
-    public void IncrementWins() => Interlocked.Increment(ref wins);
-    public void IncrementDraws() => Interlocked.Increment(ref draws);
-    public void IncrementLoses() => Interlocked.Increment(ref loses);
+	private int wins;
+	private int draws;
+	private int loses;
+
+	public int Wins => wins;
+	public int Draws => draws;
+	public int Loses => loses;
+
+	public void IncrementWins() => Interlocked.Increment(ref wins);
+	public void IncrementDraws() => Interlocked.Increment(ref draws);
+	public void IncrementLoses() => Interlocked.Increment(ref loses);
 }
 
 public class Duel
 {
-    private static CancellationTokenSource cancelToken = new();
-    private static CountdownEvent countdownEvent = new(200);
-    private static int roundCounter;
-    private static GameResult gameResult;
+	private static CancellationTokenSource cancelToken = new();
+	private static CountdownEvent countdownEvent;
+	private static int roundCounter;
+	private static GameResult gameResult;
 
-    private static readonly object fileLock = new();
-    private static readonly object consoleLock = new();
+	private static readonly object fileLock = new();
+	private static readonly object consoleLock = new();
 
-    private static ConcurrentStack<string> openings = new();
+	private static ConcurrentStack<string> openings = new();
 
-    private SPRT sprt;
-    private int initialTime;
-    private int increment;
-    
-    public void SetSPRT(double alpha, double beta, double elo0, double elo2)
-    {
-        sprt = new (alpha, beta, elo0, elo2);
-    }
+	private static bool detailedPrint = true;
 
-    enum Color
-    {
-        White,
-        Black
-    }
+	private SPRT sprt;
+	private int initialTime;
+	private int increment;
+	private List<(string, double)> engine1Options;
+	private List<(string, double)> engine2Options;
 
-    enum GameState
-    {
-        Ongoing,
-        Draw,
-        Checkmate,
-        Error,
-        TimeOut
-    }
+	private readonly ILogger logger;
 
-    [DllImport("chesslib.dll", CallingConvention = CallingConvention.Cdecl)]
-    private static extern GameState process_moves(string moves);
+	public void SetSPRT(double alpha, double beta, double elo0, double elo2)
+	{
+		sprt = new(alpha, beta, elo0, elo2);
+	}
 
-    public static bool IsMoveStringLegal(string move)
-    {
-        // string has to have either 4 or 5 letters
-        if (string.IsNullOrEmpty(move) || move.Length < 4 || move.Length > 5)
-        {
-            return false;
-        }
-        
-        // Check if first and third letters are file letters (a-h)
-        if (!"abcdefgh".Contains(move[0]) || !"abcdefgh".Contains(move[2]))
-        {
-            return false;
-        }
+	enum Color
+	{
+		White,
+		Black
+	}
 
-        // Check if second and fourth letters are rank letters (1-8)
-        if (!"12345678".Contains(move[1]) || !"12345678".Contains(move[3]))
-        {
-            return false;
-        }
+	enum GameState
+	{
+		Ongoing,
+		Draw,
+		Checkmate,
+		Error,
+		TimeOut
+	}
 
-        // Check if it has five letters, and if so, the fifth letter is a promotion letter
-        if (move.Length == 5)
-        {
-            char promotionLetter = move[4];
-            if (!"qrbn".Contains(promotionLetter))
-            {
-                return false;
-            }
-        }
+	[DllImport("chesslib.dll", CallingConvention = CallingConvention.Cdecl)]
+	private static extern GameState process_moves(string moves);
 
-        // If all checks pass, the move is considered legal
-        return true;
-    }
+	public static bool IsMoveStringLegal(string move)
+	{
+		// string has to have either 4 or 5 letters
+		if (string.IsNullOrEmpty(move) || move.Length < 4 || move.Length > 5)
+		{
+			return false;
+		}
 
-    private void SaveResult(int result)
-    {
-        if (cancelToken.IsCancellationRequested)
-        {
-            return;
-        }
+		// Check if first and third letters are file letters (a-h)
+		if (!"abcdefgh".Contains(move[0]) || !"abcdefgh".Contains(move[2]))
+		{
+			return false;
+		}
 
-        switch (result)
-        {
-            case 1:
-                gameResult.IncrementWins();
-                break;
-            case 0:
-                gameResult.IncrementDraws();
-                break;
-            case -1:
-                gameResult.IncrementLoses();
-                break;
-        }
-        
-        (bool terminal, string testResult) = sprt.Test(gameResult.Wins, gameResult.Draws, gameResult.Loses);
+		// Check if second and fourth letters are rank letters (1-8)
+		if (!"12345678".Contains(move[1]) || !"12345678".Contains(move[3]))
+		{
+			return false;
+		}
 
-        if (terminal)
-        {
-            cancelToken.Cancel();
-        }
+		// Check if it has five letters, and if so, the fifth letter is a promotion letter
+		if (move.Length == 5)
+		{
+			char promotionLetter = move[4];
+			if (!"qrbn".Contains(promotionLetter))
+			{
+				return false;
+			}
+		}
 
-        lock (consoleLock)
-        {
-            Console.WriteLine(
-                $"Wins: {gameResult.Wins}, draws: {gameResult.Draws}, loses: {gameResult.Loses}. {testResult}");
-            if (roundCounter % 10 == 0)
-            {
-                var wld = sprt.EloWld(gameResult.Wins, gameResult.Draws, gameResult.Loses);
-                
-                double e1 = wld.Item1;
-                double e2 = wld.Item2;
-                double e3 = wld.Item3;
+		// If all checks pass, the move is considered legal
+		return true;
+	}
 
-                Console.WriteLine($"ELO: {e2:F3} +- {(e3 - e1) / 2:F3} [{e1:F3}, {e3:F3}]");
-            }
-        }
-    }
+	private void SaveResult(int result)
+	{
+		if (cancelToken.IsCancellationRequested)
+		{
+			return;
+		}
 
-    static int Finishgame(GameState state, Color color, ref PGN pgn)
-    {
-        string result = (state, color) switch
-        {
-            (GameState.Draw, _) => "1/2-1/2",
-            (GameState.Checkmate, Color.White) => "1-0",
-            (GameState.Checkmate, Color.Black) => "0-1",
-            (GameState.Error, Color.White) => "0-1",
-            (GameState.Error, Color.Black) => "1-0",
-            (GameState.TimeOut, Color.White) => "0-1",
-            (GameState.TimeOut, Color.Black) => "1-0",
-            _ => "Unknown State",
-        };
+		switch (result)
+		{
+			case 1:
+				gameResult.IncrementWins();
+				break;
+			case 0:
+				gameResult.IncrementDraws();
+				break;
+			case -1:
+				gameResult.IncrementLoses();
+				break;
+		}
 
-        string filePath = "output.pgn";
-        int currentRound = Interlocked.Increment(ref roundCounter);
-        string pgnMoves = pgn.GetGame(result, currentRound);
+		(bool terminal, string testResult) = sprt.Test(gameResult.Wins, gameResult.Draws, gameResult.Loses);
 
-        // Use lock to synchronize console writes
-        lock (fileLock)
-        {
-            File.AppendAllText(filePath, pgnMoves);
-        }
+		if (terminal)
+		{
+			cancelToken.Cancel();
+		}
 
-        return result switch
-        {
-            "1/2-1/2" => 0,
-            "1-0" => 1,
-            "0-1" => -1,
-        };
-    }
+		lock (consoleLock)
+		{
+			string detailedStringPrint =
+				$"Wins: {gameResult.Wins}, draws: {gameResult.Draws}, loses: {gameResult.Loses}. {testResult}";
+			if (Duel.detailedPrint == true)
+			{
+				logger.Log(detailedStringPrint);
+			}
 
-    private void RunChessMatches(string engine1Path, string engine2Path, int rounds, int numberOfThreads)
-    {
-        Semaphore semaphore = new Semaphore(numberOfThreads, numberOfThreads);
-        for (int i = 0; i < rounds; i++)
-        {
-            semaphore.WaitOne(); 
-            ThreadPool.QueueUserWorkItem(_ =>
-            {
-                try
-                {
-                    ChessMatch(engine1Path, engine2Path, 1);
-                }
-                finally
-                {
-                    if (!cancelToken.IsCancellationRequested)
-                    {
-                        countdownEvent.Signal();
-                    }
-                    semaphore.Release(); 
-                }
-            }, cancelToken.Token);
+			if (roundCounter % 10 == 0)
+			{
+				if (Duel.detailedPrint == false)
+				{
+					logger.Log(detailedStringPrint);
+				}
+				var wld = sprt.EloWld(wins: gameResult.Wins, losses: gameResult.Loses, draws: gameResult.Draws);
 
-            semaphore.WaitOne(); 
-            ThreadPool.QueueUserWorkItem(_ =>
-            {
-                try
-                {
-                    ChessMatch(engine2Path, engine1Path, -1);
-                }
-                finally
-                {
-                    if (!cancelToken.IsCancellationRequested)
-                    {
-                        countdownEvent.Signal();
-                    }
-                    semaphore.Release(); 
-                }
-            }, cancelToken.Token);
-        }
-    }
+				double e1 = wld.Item1;
+				double e2 = wld.Item2;
+				double e3 = wld.Item3;
 
-    private void ChessMatch(string whiteEnginePath, string blackEnginePath, int coefficient)
-    {
-        const int minimumOpeningsCount = 10;
-        const int openingsToRetrieve = 20;
+				logger.Log($"ELO: {e2:F3} +- {(e3 - e1) / 2:F3} [{e1:F3}, {e3:F3}]");
+			}
+		}
+	}
 
-        if (openings.Count < minimumOpeningsCount)
-        {
-            Database.GetRandomSample(openings, openingsToRetrieve);
-        }
+	static int Finishgame(GameState state, Color color, ref PGN pgn)
+	{
+		string result = (state, color) switch
+		{
+			(GameState.Draw, _) => "1/2-1/2",
+			(GameState.Checkmate, Color.White) => "1-0",
+			(GameState.Checkmate, Color.Black) => "0-1",
+			(GameState.Error, Color.White) => "0-1",
+			(GameState.Error, Color.Black) => "1-0",
+			(GameState.TimeOut, Color.White) => "0-1",
+			(GameState.TimeOut, Color.Black) => "1-0",
+			_ => "Unknown State",
+		};
 
-        string gameOpening;
-        if (!openings.TryPop(out gameOpening))
-        {
-            gameOpening = "";
-        }
+		string filePath = "output.pgn";
+		int currentRound = Interlocked.Increment(ref roundCounter);
+		string pgnMoves = pgn.GetGame(result, currentRound);
 
-        int result1 = SingleGame(whiteEnginePath, blackEnginePath, gameOpening);
-        SaveResult(coefficient * result1);
+		// Use lock to synchronize console writes
+		lock (fileLock)
+		{
+			File.AppendAllText(filePath, pgnMoves);
+		}
 
-        int result2 = -SingleGame(blackEnginePath, whiteEnginePath, gameOpening);
-        SaveResult(coefficient * result2);
-    }
+		return result switch
+		{
+			"1/2-1/2" => 0,
+			"1-0" => 1,
+			"0-1" => -1,
+		};
+	}
 
-    int SingleGame(string whiteEnginePath, string blackEnginePath, string initialMoves)
-    {
-        if (cancelToken.IsCancellationRequested)
-        {
-            return 0;
-        }
-        
-        // Initialize communication with the engines
-        UCIEngine engine1 = new UCIEngine(whiteEnginePath, initialTime, increment);
-        UCIEngine engine2 = new UCIEngine(blackEnginePath, initialTime, increment);
+	private void RunChessMatches(string engine1Path, string engine2Path, int rounds, int numberOfThreads)
+	{
+		Semaphore semaphore = new Semaphore(numberOfThreads, numberOfThreads);
+		for (int i = 0; i < rounds; i++)
+		{
+			semaphore.WaitOne();
+			ThreadPool.QueueUserWorkItem(_ =>
+			{
+				try
+				{
+					ChessMatch(engine1Path, engine2Path, 1);
+				}
+				finally
+				{
+					if (!cancelToken.IsCancellationRequested && countdownEvent.CurrentCount > 0)
+					{
+						countdownEvent.Signal();
+					}
+					semaphore.Release();
+				}
+			}, cancelToken.Token);
 
-        string moves = initialMoves;
-        GameState state;
-        int result = 0;
+			semaphore.WaitOne();
+			ThreadPool.QueueUserWorkItem(_ =>
+			{
+				try
+				{
+					ChessMatch(engine2Path, engine1Path, -1);
+				}
+				finally
+				{
+					if (!cancelToken.IsCancellationRequested && countdownEvent.CurrentCount > 0)
+					{
+						countdownEvent.Signal();
+					}
+					semaphore.Release();
+				}
+			}, cancelToken.Token);
+		}
+	}
 
-        PGN pgn = new(engine1.GetName(), engine2.GetName());
-        foreach (string move in moves.Split(" ", StringSplitOptions.RemoveEmptyEntries))
-        {
-            pgn.PlayMove(move);
-        }
+	private void ChessMatch(string whiteEnginePath, string blackEnginePath, int coefficient)
+	{
+		const int minimumOpeningsCount = 10;
+		const int openingsToRetrieve = 20;
 
-        // Game loop
-        while (true)
-        {
-            if (cancelToken.IsCancellationRequested)
-            {
-                engine1.QuitEngine();
-                engine2.QuitEngine();
-                break;
-            }
+		if (openings.Count < minimumOpeningsCount)
+		{
+			Database.GetRandomSample(openings, openingsToRetrieve);
+		}
 
-            engine1.SetPosition("startpos", moves);
-            string moveFromEngine1 = engine1.GetBestMove();
+		string gameOpening;
+		if (!openings.TryPop(out gameOpening))
+		{
+			gameOpening = "";
+		}
 
-            moves += $" {moveFromEngine1} ";
-            state = process_moves(moves);
+		int result1 = SingleGame(whiteEnginePath, blackEnginePath, gameOpening, coefficient);
+		SaveResult(coefficient * result1);
 
-            if (!engine1.TimeLeft())
-            {
-                state = GameState.TimeOut;
-                pgn.AddComment("Lost on time");
-            }
+		int result2 = -SingleGame(blackEnginePath, whiteEnginePath, gameOpening, -coefficient);
+		SaveResult(coefficient * result2);
+	}
 
-            if (!IsMoveStringLegal(moveFromEngine1))
-            {
-                Console.WriteLine(moveFromEngine1);
-                state = GameState.Error;
-                pgn.AddComment($"Illegal move {moveFromEngine1}");
-            }
+	int SingleGame(string whiteEnginePath, string blackEnginePath, string initialMoves, int colorCoefficient)
+	{
+		if (cancelToken.IsCancellationRequested)
+		{
+			return 0;
+		}
 
-            if (state != GameState.Ongoing)
-            {
-                result = Finishgame(state, Color.White, ref pgn);
-                engine1.QuitEngine();
-                engine2.QuitEngine();
-                break;
-            }
+		// Initialize communication with the engines
+		UCIEngine engine1 = new UCIEngine(whiteEnginePath, initialTime, increment);
+		UCIEngine engine2 = new UCIEngine(blackEnginePath, initialTime, increment);
 
-            pgn.PlayMove(moveFromEngine1);
 
-            engine2.SetPosition("startpos", moves);
-            string moveFromEngine2 = engine2.GetBestMove();
+		foreach (var option in engine1Options)
+		{
+			if (colorCoefficient == 1)
+			{
+				engine1.SetOption(option.Item1, option.Item2);
+			}
+			else
+			{
+				engine2.SetOption(option.Item1, option.Item2);
+			}
+		}
 
-            moves += $" {moveFromEngine2} ";
+		foreach (var option in engine2Options)
+		{
+			if (colorCoefficient == 1)
+			{
+				engine2.SetOption(option.Item1, option.Item2);
+			}
+			else
+			{
+				engine1.SetOption(option.Item1, option.Item2);
+			}
+		}
 
-            state = process_moves(moves);
+		string moves = initialMoves;
+		GameState state;
+		int result = 0;
 
-            if (!engine2.TimeLeft())
-            {
-                Console.WriteLine("Lost on time");
-                pgn.AddComment("Lost on time");
-                state = GameState.TimeOut;
-            }
+		PGN pgn = new(engine1.GetName(), engine2.GetName());
+		foreach (string move in moves.Split(" ", StringSplitOptions.RemoveEmptyEntries))
+		{
+			pgn.PlayMove(move);
+		}
 
-            if (!IsMoveStringLegal(moveFromEngine2))
-            {
-                Console.WriteLine(moveFromEngine2);
-                state = GameState.Error;
-                pgn.AddComment($"Illegal move {moveFromEngine2}");
-            }
+		int numberOfMoves = 1;
+		// Game loop
+		while (true)
+		{
+			if (numberOfMoves > 150)
+			{
+				result = Finishgame(GameState.Draw, Color.White, ref pgn);
+				engine1.QuitEngine();
+				engine2.QuitEngine();
+				break;
+			}
 
-            if (state != GameState.Ongoing)
-            {
-                result = Finishgame(state, Color.Black, ref pgn);
-                engine1.QuitEngine();
-                engine2.QuitEngine();
-                break;
-            }
+			if (cancelToken.IsCancellationRequested)
+			{
+				engine1.QuitEngine();
+				engine2.QuitEngine();
+				break;
+			}
 
-            pgn.PlayMove(moveFromEngine2);
-        }
+			engine1.SetPosition("startpos", moves);
+			string moveFromEngine1 = engine1.GetBestMove();
 
-        return result;
-    }
+			moves += $" {moveFromEngine1} ";
+			state = process_moves(moves);
 
-    public void Run(string engine1Path, string engine2Path, int numberOfThreads, int initTime, int incr, int rounds)
-    {
-        initialTime = initTime;
-        increment = incr;
-        
-        Database.GetRandomSample(openings, 50);
+			if (!engine1.TimeLeft())
+			{
+				state = GameState.TimeOut;
+				pgn.AddComment("Lost on time");
+			}
 
-        countdownEvent = new(2 * rounds);
-        RunChessMatches(engine1Path, engine2Path, rounds, numberOfThreads);
-        
-        Task.WhenAny(Task.Run(() => countdownEvent.Wait()), Task.Delay(Timeout.Infinite, cancelToken.Token))
-            .ContinueWith(_ =>
-            {
-                // Cancel the countdown event if it's still active
-                countdownEvent.Dispose();
-                
-                // Cancel the token to ensure other threads know about cancellation
-                cancelToken.Cancel();
-            })
-            .Wait();
-    }
+			if (!IsMoveStringLegal(moveFromEngine1))
+			{
+				logger.Log(moveFromEngine1);
+				state = GameState.Error;
+				pgn.AddComment($"Illegal move {moveFromEngine1}");
+			}
+
+			if (state != GameState.Ongoing)
+			{
+				result = Finishgame(state, Color.White, ref pgn);
+				engine1.QuitEngine();
+				engine2.QuitEngine();
+				break;
+			}
+
+			pgn.PlayMove(moveFromEngine1);
+
+			engine2.SetPosition("startpos", moves);
+			string moveFromEngine2 = engine2.GetBestMove();
+
+			moves += $" {moveFromEngine2} ";
+
+			state = process_moves(moves);
+
+			if (!engine2.TimeLeft())
+			{
+				logger.Log("Lost on time");
+				pgn.AddComment("Lost on time");
+				state = GameState.TimeOut;
+			}
+
+			if (!IsMoveStringLegal(moveFromEngine2))
+			{
+				logger.Log(moveFromEngine2);
+				state = GameState.Error;
+				pgn.AddComment($"Illegal move {moveFromEngine2}");
+			}
+
+			if (state != GameState.Ongoing)
+			{
+				result = Finishgame(state, Color.Black, ref pgn);
+				engine1.QuitEngine();
+				engine2.QuitEngine();
+				break;
+			}
+
+			pgn.PlayMove(moveFromEngine2);
+		}
+
+		return result;
+	}
+
+	public void Run(string engine1Path, string engine2Path, int numberOfThreads, int initTime, int incr, int rounds, List<(string, double)> options1, List<(string, double)> options2)
+	{
+		gameResult = new();
+		cancelToken = new();
+		countdownEvent = new(2 * rounds);
+
+		initialTime = initTime;
+		increment = incr;
+		engine1Options = options1;
+		engine2Options = options2;
+
+		Database.GetRandomSample(openings, 50);
+
+		RunChessMatches(engine1Path, engine2Path, rounds, numberOfThreads);
+
+		Task.WhenAny(Task.Run(() => countdownEvent.Wait()), Task.Delay(Timeout.Infinite, cancelToken.Token))
+			.ContinueWith(_ =>
+			{
+				// Cancel the countdown event if it's still active
+				countdownEvent.Dispose();
+
+				// Cancel the token to ensure other threads know about cancellation
+				cancelToken.Cancel();
+			})
+			.Wait();
+
+		string detailedStringPrint = $"End of match: Wins: {gameResult.Wins}, draws: {gameResult.Draws}, loses: {gameResult.Loses}.";
+		logger.Log(detailedStringPrint);
+	}
+
+	public (int, int, int) GetWLD()
+	{
+		return (gameResult.Wins, gameResult.Loses, gameResult.Draws);
+	}
+
+	public void disableDetailedPrint()
+	{
+		detailedPrint = false;
+	}
+
+	public Duel(ILogger logger = null)
+	{
+		this.logger = logger ?? new ConsoleLogger(); // Use the provided logger or default to ConsoleLogger
+	}
 }
