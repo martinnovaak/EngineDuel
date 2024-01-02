@@ -3,6 +3,19 @@ using System.Runtime.InteropServices;
 
 namespace EngineDuel;
 
+public interface ILogger
+{
+	void Log(string message);
+}
+
+public class ConsoleLogger : ILogger
+{
+	public void Log(string message)
+	{
+		Console.WriteLine(message);
+	}
+}
+
 public struct GameResult
 {
 	private int wins;
@@ -37,6 +50,8 @@ public class Duel
 	private int increment;
 	private List<(string, double)> engine1Options;
 	private List<(string, double)> engine2Options;
+
+	private readonly ILogger logger;
 
 	public void SetSPRT(double alpha, double beta, double elo0, double elo2)
 	{
@@ -128,14 +143,14 @@ public class Duel
 				$"Wins: {gameResult.Wins}, draws: {gameResult.Draws}, loses: {gameResult.Loses}. {testResult}";
 			if (Duel.detailedPrint == true)
 			{
-				Console.WriteLine(detailedStringPrint);
+				logger.Log(detailedStringPrint);
 			}
 
 			if (roundCounter % 10 == 0)
 			{
 				if (Duel.detailedPrint == false)
 				{
-					Console.WriteLine(detailedStringPrint);
+					logger.Log(detailedStringPrint);
 				}
 				var wld = sprt.EloWld(wins: gameResult.Wins, losses: gameResult.Loses, draws: gameResult.Draws);
 
@@ -143,7 +158,7 @@ public class Duel
 				double e2 = wld.Item2;
 				double e3 = wld.Item3;
 
-				Console.WriteLine($"ELO: {e2:F3} +- {(e3 - e1) / 2:F3} [{e1:F3}, {e3:F3}]");
+				logger.Log($"ELO: {e2:F3} +- {(e3 - e1) / 2:F3} [{e1:F3}, {e3:F3}]");
 			}
 		}
 	}
@@ -323,7 +338,7 @@ public class Duel
 
 			if (!IsMoveStringLegal(moveFromEngine1))
 			{
-				Console.WriteLine(moveFromEngine1);
+				logger.Log(moveFromEngine1);
 				state = GameState.Error;
 				pgn.AddComment($"Illegal move {moveFromEngine1}");
 			}
@@ -347,14 +362,14 @@ public class Duel
 
 			if (!engine2.TimeLeft())
 			{
-				Console.WriteLine("Lost on time");
+				logger.Log("Lost on time");
 				pgn.AddComment("Lost on time");
 				state = GameState.TimeOut;
 			}
 
 			if (!IsMoveStringLegal(moveFromEngine2))
 			{
-				Console.WriteLine(moveFromEngine2);
+				logger.Log(moveFromEngine2);
 				state = GameState.Error;
 				pgn.AddComment($"Illegal move {moveFromEngine2}");
 			}
@@ -398,6 +413,9 @@ public class Duel
 				cancelToken.Cancel();
 			})
 			.Wait();
+
+		string detailedStringPrint = $"End of match: Wins: {gameResult.Wins}, draws: {gameResult.Draws}, loses: {gameResult.Loses}.";
+		logger.Log(detailedStringPrint);
 	}
 
 	public (int, int, int) GetWLD()
@@ -408,5 +426,10 @@ public class Duel
 	public void disableDetailedPrint()
 	{
 		detailedPrint = false;
+	}
+
+	public Duel(ILogger logger = null)
+	{
+		this.logger = logger ?? new ConsoleLogger(); // Use the provided logger or default to ConsoleLogger
 	}
 }

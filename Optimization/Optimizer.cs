@@ -4,12 +4,14 @@ namespace EngineDuel;
 
 public class Optimizer
 {
-	private string enginePath;
+	private string enginePath1;
+	private string enginePath2;
 	private int numberOfThreads;
 	private int numberOfRounds;
 	private int gameTime;
 	private int gameIncrement;
 	private List<(string, double, double)> engineOptions;
+	private ILogger logger;
 
 	public int GetScore(double[] perturbedThetaPositive, double[] perturbedThetaNegative)
 	{
@@ -18,14 +20,15 @@ public class Optimizer
 
 		for (int i = 0; i < perturbedThetaPositive.Length; i++)
 		{
+			Console.WriteLine($"{perturbedThetaPositive[i]} {perturbedThetaNegative[i]}");
 			optionsEngine1.Add((engineOptions[i].Item1, perturbedThetaPositive[i]));
 			optionsEngine2.Add((engineOptions[i].Item1, perturbedThetaNegative[i]));
 		}
 
-			Duel duel = new();
+		Duel duel = new();
 		duel.SetSPRT(0.01, 0.01, -5, 5);
 		duel.disableDetailedPrint();
-		duel.Run(enginePath, enginePath, numberOfThreads, gameTime, gameIncrement, numberOfRounds, optionsEngine1, optionsEngine2);
+		duel.Run(enginePath1, enginePath2, numberOfThreads, gameTime, gameIncrement, numberOfRounds, optionsEngine1, optionsEngine2);
 
 		(int wins, int loses, int draws) = duel.GetWLD();
 
@@ -52,14 +55,16 @@ public class Optimizer
 		double[] theta = (double[])initialTheta.Clone();
 		double[] m = new double[theta.Length];
 		double[] v = new double[theta.Length];
+		double[] a = engineOptions.Select(option => option.Item3).ToArray();
 		double[] c = engineOptions.Select(option => option.Item3).ToArray();
+		
 		int t = 1;
 		Random random = new Random(Guid.NewGuid().GetHashCode());
 
 		for (int iteration = 0; iteration < maxIterations; iteration++)
 		{
-			double aK = 1.0 / Math.Pow((t - 1) * numberOfRounds + maxIterations / 10, 0.601);
-			double[] cK = c.Select((value, index) => value / Math.Pow((t - 1) * numberOfRounds + 1, 0.102)).ToArray();
+			double[] aK = a.Select((value, index) => value / Math.Pow(t + maxIterations / 10, 0.601)).ToArray(); 
+			double[] cK = c.Select((value, index) => value / Math.Pow(t, 0.102)).ToArray();
 
 			double[] deltaK = cK.Select(ck => ck * (random.Next(2) * 2 - 1)).ToArray();
 
@@ -71,7 +76,7 @@ public class Optimizer
 			double[] m_ = m.Select(mi => mi / (1 - Math.Pow(beta1, t))).ToArray();
 			double[] v_ = v.Select(vi => vi / (1 - Math.Pow(beta2, t))).ToArray();
 
-			theta = theta.Zip(m, (ti, mi) => ti - aK * mi / (Math.Sqrt(v.First()) + epsilon)).ToArray();
+			theta = theta.Select((ti, i) => ti - aK[i] * m_[i] / (Math.Sqrt(v_[i]) + epsilon)).ToArray();
 
 			t++;
 
@@ -84,19 +89,21 @@ public class Optimizer
 	public double[] SgdWithSpsa(double[] initialTheta, int maxIterations, double beta1 = 0.9, double beta2 = 0.999, double epsilon = 1e-8)
 	{
 		double[] theta = (double[])initialTheta.Clone();
+		double[] a = engineOptions.Select(option => option.Item3).ToArray();
+		double[] c = engineOptions.Select(option => option.Item3).ToArray();
 		int t = 1;
 		Random random = new Random(Guid.NewGuid().GetHashCode());
 
 		for (int iteration = 0; iteration < maxIterations; iteration++)
 		{
-			double aK = 1.0 / Math.Pow(t + maxIterations / 10, 0.601);
-			double cK = 1.0 / Math.Pow(t, 0.102);
+			double[] aK = a.Select((value, index) => value / Math.Pow((t - 1) * 4 * numberOfRounds + maxIterations / 10, 0.601)).ToArray();
+			double[] cK = c.Select((value, index) => value / Math.Pow((t - 1) * 4 * numberOfRounds + 1, 0.102)).ToArray();
 
-			double[] deltaK = Enumerable.Range(0, theta.Length).Select(_ => cK * (random.Next(2) * 2 - 1)).ToArray();
+			double[] deltaK = cK.Select(ck => ck * (random.Next(2) * 2 - 1)).ToArray();
 
 			double[] gradientEstimate = SpsaGradientEstimate(theta, deltaK);
 
-			theta = theta.Zip(gradientEstimate, (ti, gi) => ti - aK * gi).ToArray();
+			theta = theta.Select((ti, i) => ti - aK[i] * gradientEstimate[i]).ToArray();
 
 			t++;
 
@@ -108,55 +115,29 @@ public class Optimizer
 
 	void printPoints(string message, double[] point1, double[] point2)
 	{
-		Console.Write($"{message}: [");
-		for (int i = 0; i < point1.Length; i++)
-		{
-			Console.Write($"{point1[i]:F3}");
-			if (i < point1.Length - 1)
-			{
-				Console.Write(", ");
-			}
-		}
-		Console.Write("] vs [");
-		for (int i = 0; i < point2.Length; i++)
-		{
-			Console.Write($"{point2[i]:F3}");
-			if (i < point2.Length - 1)
-			{
-				Console.Write(", ");
-			}
-		}
-		Console.WriteLine("]");
+		logger.Log($"{message}: [{string.Join(", ", point1)}] vs [{string.Join(", ", point2)}]");
 	}
 
 	void printPoint(string message, double[] point)
 	{
-		Console.Write($"{message}: [");
-		for (int i = 0; i < point.Length; i++)
-		{
-			Console.Write($"{point[i]:F3}");
-			if (i < point.Length - 1)
-			{
-				Console.Write(", ");
-			}
-		}
-		Console.WriteLine("]");
+		logger.Log($"{message}: [{string.Join(", ", point)}]");
 	}
 
-	public Optimizer(string enginePath, int numberOfThreads, int numberOfRounds, int gameTime, int gameIncrement, List<(string, double, double)> engineOptions)
+	public Optimizer(string enginePath1, string enginePath2, int numberOfThreads, int numberOfRounds, int gameTime, int gameIncrement, List<(string, double, double)> engineOptions, ILogger logger = null)
 	{
-		this.enginePath = enginePath;
+		this.enginePath1 = enginePath1;
 		this.numberOfThreads = numberOfThreads;
 		this.numberOfRounds = numberOfRounds;
 		this.gameTime = gameTime;
 		this.gameIncrement = gameIncrement;
 		this.engineOptions = engineOptions;
+		this.logger = logger ?? new ConsoleLogger(); // Use the provided logger or default to ConsoleLogger
 	}
 
 	public void Optimize()
 	{
 		double[] start = engineOptions.Select(item => item.Item2).ToArray();
-		var result = AdamWithSpsa(start, 10000);
+		var result = AdamWithSpsa(start, 100);
 
 		//double[] point = result.Item1;
 		//double value = result.Item2;
