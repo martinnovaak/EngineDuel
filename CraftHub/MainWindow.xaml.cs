@@ -8,9 +8,10 @@ using EngineDuel;
 using System.Windows.Controls;
 using System.Collections.ObjectModel;
 using System.Threading;
+using System.Windows.Media;
 
 
-namespace CraftHub
+namespace GuilloChess
 {
 	// Define a class to represent engine options
 	public class EngineOption
@@ -24,7 +25,7 @@ namespace CraftHub
 	{
 		private readonly TextBox _textBox;
 		private readonly TextBox _scoreTextBox; 
-		private bool isOptimization = true;
+		private bool _isOptimization = true;
 		private CancellationTokenSource _cancellationTokenSource; // New field for cancellation
 
 		public TextBoxLogger(TextBox textBox, TextBox scoreTextBox)
@@ -35,6 +36,7 @@ namespace CraftHub
 
 		public void SetOptimization(bool isOptimization, CancellationTokenSource cancellationTokenSource)
 		{
+			_isOptimization = isOptimization;
 			_cancellationTokenSource = cancellationTokenSource;
 		}
 
@@ -43,15 +45,16 @@ namespace CraftHub
 			// Check if the current thread is the UI thread
 			if (_textBox.Dispatcher.CheckAccess())
 			{
-				// Directly update the TextBox if on the UI thread
 				_textBox.AppendText(message + "\n");
 
 				// Check if the message contains "iteration number"
-				if (isOptimization && message.Contains("Iteration number"))
+				if (_isOptimization && message.Contains("Iteration number"))
 				{
-					_scoreTextBox.Text = message;
+					string? iterationLine = message.Split('\n').FirstOrDefault(line => line.Contains("Iteration number"));
+					_scoreTextBox.Text = iterationLine;
 				}
-				else if (message.Contains("Wins"))
+				
+				if (!_isOptimization && message.Contains("Wins"))
 				{
 					_scoreTextBox.Text = message;
 				}
@@ -64,11 +67,13 @@ namespace CraftHub
 					_textBox.AppendText(message + "\n");
 
 					// Check if the message contains "iteration number"
-					if (isOptimization && message.Contains("Iteration number"))
+					if (_isOptimization && message.Contains("Iteration number"))
 					{
-						_scoreTextBox.Text = message;
+						string? iterationLine = message.Split('\n').FirstOrDefault(line => line.Contains("Iteration number"));
+						_scoreTextBox.Text = iterationLine;
 					}
-					else if (message.Contains("Wins"))
+					
+					if (!_isOptimization && message.Contains("Wins"))
 					{
 						_scoreTextBox.Text = message;
 					}
