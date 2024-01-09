@@ -10,25 +10,7 @@ public interface ILogger
 
 public class ConsoleLogger : ILogger
 {
-	public void Log(string message)
-	{
-		Console.WriteLine(message);
-	}
-}
-
-public struct GameResult
-{
-	private int wins;
-	private int draws;
-	private int loses;
-
-	public int Wins => wins;
-	public int Draws => draws;
-	public int Loses => loses;
-
-	public void IncrementWins() => Interlocked.Increment(ref wins);
-	public void IncrementDraws() => Interlocked.Increment(ref draws);
-	public void IncrementLoses() => Interlocked.Increment(ref loses);
+	public void Log(string message) => Console.WriteLine(message);
 }
 
 public class Duel
@@ -53,12 +35,9 @@ public class Duel
 
 	private readonly ILogger logger;
 
-	public void SetSPRT(double alpha, double beta, double elo0, double elo2)
-	{
-		sprt = new(alpha, beta, elo0, elo2);
-	}
+	public void SetSPRT(double alpha, double beta, double elo0, double elo2) => sprt = new(alpha, beta, elo0, elo2);
 
-	enum Color
+	enum PlayerColor
 	{
 		White,
 		Black
@@ -73,8 +52,8 @@ public class Duel
 		TimeOut
 	}
 
-	[DllImport("chesslib.dll", CallingConvention = CallingConvention.Cdecl)]
-	private static extern GameState process_moves(string moves);
+	[DllImport("chesslib.dll", EntryPoint = "process_moves", CallingConvention = CallingConvention.Cdecl)]
+	private static extern GameState ProcessMoves(string moves);
 
 	public static bool IsMoveStringLegal(string move)
 	{
@@ -110,32 +89,42 @@ public class Duel
 		return true;
 	}
 
-	private void SaveResult(int result)
+	private void SaveResult(PlayerColor color, int result)
 	{
 		if (cancelToken.IsCancellationRequested)
 		{
 			return;
 		}
-
-		switch (result)
+		
+		switch ((color, result))
 		{
-			case 1:
+			case (PlayerColor.White, 1):
 				gameResult.IncrementWins();
+				gameResult.IncrementWhiteWins();
 				break;
-			case 0:
-				gameResult.IncrementDraws();
-				break;
-			case -1:
+			case (PlayerColor.Black, 1):
 				gameResult.IncrementLoses();
+				gameResult.IncrementBlackLoses();
+				break;
+			case (PlayerColor.White, 0):
+				gameResult.IncrementDraws();
+				gameResult.IncrementWhiteDraws();
+				break;
+			case (PlayerColor.Black, 0):
+				gameResult.IncrementDraws();
+				gameResult.IncrementBlackDraws();
+				break;
+			case (PlayerColor.White , - 1):
+				gameResult.IncrementLoses();	
+				gameResult.IncrementWhiteLoses();
+				break;
+			case (PlayerColor.Black, - 1):
+				gameResult.IncrementWins();
+				gameResult.IncrementBlackWins();
 				break;
 		}
 
-		(bool terminal, string testResult) = sprt.Test(gameResult.Wins, gameResult.Draws, gameResult.Loses);
-
-		if (terminal)
-		{
-			cancelToken.Cancel();
-		}
+		(bool testFinished, string testResult) = sprt.Test(gameResult.Wins, gameResult.Draws, gameResult.Loses);
 
 		lock (consoleLock)
 		{
@@ -152,28 +141,30 @@ public class Duel
 				{
 					logger.Log(detailedStringPrint);
 				}
-				var wld = sprt.EloWld(wins: gameResult.Wins, losses: gameResult.Loses, draws: gameResult.Draws);
-
-				double e1 = wld.Item1;
-				double e2 = wld.Item2;
-				double e3 = wld.Item3;
+				
+				(double e1, double e2, double e3) = sprt.EloWld(wins: gameResult.Wins, losses: gameResult.Loses, draws: gameResult.Draws);
 
 				logger.Log($"ELO: {e2:F3} +- {(e3 - e1) / 2:F3} [{e1:F3}, {e3:F3}]");
 			}
 		}
+
+		if (testFinished)
+		{
+			cancelToken.Cancel();
+		}
 	}
 
-	static int Finishgame(GameState state, Color color, ref PGN pgn)
+	static int Finishgame(GameState state, PlayerColor color, ref PGN pgn)
 	{
 		string result = (state, color) switch
 		{
 			(GameState.Draw, _) => "1/2-1/2",
-			(GameState.Checkmate, Color.White) => "1-0",
-			(GameState.Checkmate, Color.Black) => "0-1",
-			(GameState.Error, Color.White) => "0-1",
-			(GameState.Error, Color.Black) => "1-0",
-			(GameState.TimeOut, Color.White) => "0-1",
-			(GameState.TimeOut, Color.Black) => "1-0",
+			(GameState.Checkmate, PlayerColor.White) => "1-0",
+			(GameState.Checkmate, PlayerColor.Black) => "0-1",
+			(GameState.Error, PlayerColor.White) => "0-1",
+			(GameState.Error, PlayerColor.Black) => "1-0",
+			(GameState.TimeOut, PlayerColor.White) => "0-1",
+			(GameState.TimeOut, PlayerColor.Black) => "1-0",
 			_ => "Unknown State",
 		};
 
@@ -205,7 +196,7 @@ public class Duel
 			{
 				try
 				{
-					ChessMatch(engine1Path, engine2Path, 1);
+					ChessMatch(engine1Path, engine2Path, PlayerColor.White);
 				}
 				finally
 				{
@@ -222,7 +213,7 @@ public class Duel
 			{
 				try
 				{
-					ChessMatch(engine2Path, engine1Path, -1);
+					ChessMatch(engine2Path, engine1Path, PlayerColor.Black);
 				}
 				finally
 				{
@@ -236,7 +227,7 @@ public class Duel
 		}
 	}
 
-	private void ChessMatch(string whiteEnginePath, string blackEnginePath, int coefficient)
+	private void ChessMatch(string whiteEnginePath, string blackEnginePath, PlayerColor color)
 	{
 		if (cancelToken.IsCancellationRequested)
 		{
@@ -257,14 +248,15 @@ public class Duel
 			gameOpening = "";
 		}
 
-		int result1 = SingleGame(whiteEnginePath, blackEnginePath, gameOpening, coefficient);
-		SaveResult(coefficient * result1);
+		int result1 = SingleGame(whiteEnginePath, blackEnginePath, gameOpening, color);
+		SaveResult(color, result1);
 
-		int result2 = -SingleGame(blackEnginePath, whiteEnginePath, gameOpening, -coefficient);
-		SaveResult(coefficient * result2);
+		PlayerColor changedColor = color == PlayerColor.White ? PlayerColor.Black : PlayerColor.White;
+		int result2 = -SingleGame(blackEnginePath, whiteEnginePath, gameOpening, changedColor);
+		SaveResult(color, result2);
 	}
 
-	int SingleGame(string whiteEnginePath, string blackEnginePath, string initialMoves, int colorCoefficient)
+	int SingleGame(string whiteEnginePath, string blackEnginePath, string initialMoves, PlayerColor color)
 	{
 		if (cancelToken.IsCancellationRequested)
 		{
@@ -278,7 +270,7 @@ public class Duel
 
 		foreach (var option in engine1Options)
 		{
-			if (colorCoefficient == 1)
+			if (color == PlayerColor.White)
 			{
 				engine1.SetOption(option.Item1, option.Item2);
 			}
@@ -290,7 +282,7 @@ public class Duel
 
 		foreach (var option in engine2Options)
 		{
-			if (colorCoefficient == 1)
+			if (color == PlayerColor.White)
 			{
 				engine2.SetOption(option.Item1, option.Item2);
 			}
@@ -310,13 +302,13 @@ public class Duel
 			pgn.PlayMove(move);
 		}
 
-		int numberOfMoves = 1;
 		// Game loop
+		int numberOfMoves = 1;
 		while (true)
 		{
-			if (numberOfMoves > 150)
+			if (numberOfMoves > 250)
 			{
-				result = Finishgame(GameState.Draw, Color.White, ref pgn);
+				result = Finishgame(GameState.Draw, PlayerColor.White, ref pgn);
 				engine1.QuitEngine();
 				engine2.QuitEngine();
 				break;
@@ -333,9 +325,9 @@ public class Duel
 			string moveFromEngine1 = engine1.GetBestMove();
 
 			moves += $" {moveFromEngine1} ";
-			state = process_moves(moves);
+			state = ProcessMoves(moves);
 
-			if (!engine1.TimeLeft())
+			if (!engine1.HasTimeLeft())
 			{
 				state = GameState.TimeOut;
 				pgn.AddComment("Lost on time");
@@ -343,14 +335,13 @@ public class Duel
 
 			if (!IsMoveStringLegal(moveFromEngine1))
 			{
-				logger.Log(moveFromEngine1);
 				state = GameState.Error;
 				pgn.AddComment($"Illegal move {moveFromEngine1}");
 			}
 
 			if (state != GameState.Ongoing)
 			{
-				result = Finishgame(state, Color.White, ref pgn);
+				result = Finishgame(state, PlayerColor.White, ref pgn);
 				engine1.QuitEngine();
 				engine2.QuitEngine();
 				break;
@@ -363,31 +354,30 @@ public class Duel
 
 			moves += $" {moveFromEngine2} ";
 
-			state = process_moves(moves);
+			state = ProcessMoves(moves);
 
-			if (!engine2.TimeLeft())
+			if (!engine2.HasTimeLeft())
 			{
-				logger.Log("Lost on time");
 				pgn.AddComment("Lost on time");
 				state = GameState.TimeOut;
 			}
 
 			if (!IsMoveStringLegal(moveFromEngine2))
 			{
-				logger.Log(moveFromEngine2);
-				state = GameState.Error;
 				pgn.AddComment($"Illegal move {moveFromEngine2}");
+				state = GameState.Error;
 			}
 
 			if (state != GameState.Ongoing)
 			{
-				result = Finishgame(state, Color.Black, ref pgn);
+				result = Finishgame(state, PlayerColor.Black, ref pgn);
 				engine1.QuitEngine();
 				engine2.QuitEngine();
 				break;
 			}
 
 			pgn.PlayMove(moveFromEngine2);
+			numberOfMoves++;
 		}
 
 		return result;
@@ -409,13 +399,11 @@ public class Duel
 		RunChessMatches(engine1Path, engine2Path, rounds, numberOfThreads);
 
 		Task.WhenAny(Task.Run(() => countdownEvent.Wait()), Task.Delay(Timeout.Infinite, cancelToken.Token))
-			.ContinueWith(_ =>
+			.ContinueWith(_ => 
 			{
-				// Cancel the countdown event if it's still active
-				countdownEvent.Dispose();
-
-				// Cancel the token to ensure other threads know about cancellation
-				cancelToken.Cancel();
+				countdownEvent.Dispose(); // Cancel the countdown event if it's still active
+				
+				cancelToken.Cancel(); // Cancel the token to ensure other threads know about cancellation
 			})
 			.Wait();
 
@@ -423,18 +411,9 @@ public class Duel
 		logger.Log(detailedStringPrint);
 	}
 
-	public (int, int, int) GetWLD()
-	{
-		return (gameResult.Wins, gameResult.Loses, gameResult.Draws);
-	}
+	public (int, int, int) GetWLD() => (gameResult.Wins, gameResult.Loses, gameResult.Draws);
 
-	public void disableDetailedPrint()
-	{
-		detailedPrint = false;
-	}
+	public void DisableDetailedPrint() => detailedPrint = false;
 
-	public Duel(ILogger logger = null)
-	{
-		this.logger = logger ?? new ConsoleLogger(); // Use the provided logger or default to ConsoleLogger
-	}
+	public Duel(ILogger logger = null) => this.logger = logger ?? new ConsoleLogger();
 }
