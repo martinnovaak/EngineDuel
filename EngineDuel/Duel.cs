@@ -406,9 +406,14 @@ public class Duel
 				cancelToken.Cancel(); // Cancel the token to ensure other threads know about cancellation
 			})
 			.Wait();
-
-		string detailedStringPrint = $"End of match: Wins: {gameResult.Wins}, draws: {gameResult.Draws}, loses: {gameResult.Loses}.";
-		logger.Log(detailedStringPrint);
+		
+		(double e1, double e2, double e3) = sprt.EloWld(wins: gameResult.Wins, losses: gameResult.Loses, draws: gameResult.Draws);
+		string finalPrint = $"________________________________________________\n End of match: " +
+			$"Wins: {gameResult.Wins}, draws: {gameResult.Draws}, loses: {gameResult.Loses}.\n" +
+			$"Wins as white: {gameResult.WhiteWins}, draws as white: {gameResult.WhiteDraws}, loses as white: {gameResult.WhiteLoses}\n" +
+			$"Wins as black: {gameResult.BlackWins}, draws as black: {gameResult.BlackDraws}, loses as black: {gameResult.BlackLoses}\n" +
+			$"ELO: {e2:F3} +- {(e3 - e1) / 2:F3} [{e1:F3}, {e3:F3}]";
+		logger.Log(finalPrint);
 	}
 
 	public (int, int, int) GetWLD() => (gameResult.Wins, gameResult.Loses, gameResult.Draws);

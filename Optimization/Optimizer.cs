@@ -28,7 +28,7 @@ public class Optimizer
 
 		Duel duel = new(logger);
 		duel.SetSPRT(0.01, 0.01, -5, 5);
-		duel.disableDetailedPrint();
+		duel.DisableDetailedPrint();
 		duel.Run(enginePath1, enginePath2, numberOfThreads, gameTime, gameIncrement, numberOfRounds, optionsEngine1, optionsEngine2, cancellationToken);
 
 		(int wins, int loses, int draws) = duel.GetWLD();
@@ -58,20 +58,14 @@ public class Optimizer
 		double[] v = new double[theta.Length];
 		double[] a = engineOptions.Select(option => option.Item3).ToArray();
 		double[] c = engineOptions.Select(option => option.Item3).ToArray();
-		
+
 		int t = 1;
-		Random random = new Random(Guid.NewGuid().GetHashCode());
+		Random random = new();
 
 		for (int iteration = 0; iteration < maxIterations; iteration++)
 		{
-			if (cancellationToken.IsCancellationRequested)
-			{
-				printPoint($"Cancellation requested in iteration number: {t}, Best values: ", theta);
-				break;
-			}
-
-			double[] aK = a.Select((value, index) => value / Math.Pow(t + maxIterations / 10, 0.601)).ToArray(); 
-			double[] cK = c.Select((value, index) => value / Math.Pow(t, 0.102)).ToArray();
+			double[] aK = a.Select((value, index) => value / Math.Pow((t - 1) * numberOfRounds + maxIterations / 10, 0.601)).ToArray();
+			double[] cK = c.Select((value, index) => value / Math.Pow((t - 1) * numberOfRounds + 1, 0.102)).ToArray();
 
 			double[] deltaK = cK.Select(ck => ck * (random.Next(2) * 2 - 1)).ToArray();
 
@@ -93,13 +87,65 @@ public class Optimizer
 		return theta;
 	}
 
+	public double[] RAdamWithSpsa(double[] initialTheta, int maxIterations, double beta1 = 0.9, double beta2 = 0.999, double epsilon = 1e-8)
+	{
+		double[] theta = (double[])initialTheta.Clone();
+		double[] m = new double[theta.Length];
+		double[] v = new double[theta.Length];
+		double[] a = engineOptions.Select(option => option.Item3).ToArray();
+		double[] c = engineOptions.Select(option => option.Item3).ToArray();
+		double rho_inf = 2.0 / (1.0 - beta2) - 1.0;
+		
+		int t = 1;
+		Random random = new();
+
+		for (int iteration = 0; iteration < maxIterations; iteration++)
+		{
+			if (cancellationToken.IsCancellationRequested)
+			{
+				printPoint($"Cancellation requested in iteration number: {t}, Best values: ", theta);
+				break;
+			}
+
+			double[] aK = a.Select((value, index) => value / Math.Pow(t  + maxIterations / 10, 0.601)).ToArray(); 
+			double[] cK = c.Select((value, index) => value / Math.Pow(t, 0.102)).ToArray();
+
+			double[] deltaK = cK.Select(ck => ck * (random.Next(2) * 2 - 1)).ToArray();
+
+			double[] gradientEstimate = SpsaGradientEstimate(theta, deltaK);
+
+			m = m.Zip(gradientEstimate, (mi, gi) => beta1 * mi + (1 - beta1) * gi).ToArray();
+			v = v.Zip(gradientEstimate, (vi, gi) => beta2 * vi + (1 - beta2) * gi * gi).ToArray();
+
+			double[] m_ = m.Select(mi => mi / (1 - Math.Pow(beta1, t))).ToArray();
+			double rho_t = rho_inf - 2.0 * t * Math.Pow(beta2, t) / (1 - Math.Pow(beta2, t));
+
+			if (t > 5)
+			{
+				double[] lT = v.Select((vi, i) => Math.Sqrt(1 - Math.Pow(beta2, t)) / (Math.Sqrt(vi) + epsilon)).ToArray();
+				double rT = Math.Sqrt(((rho_t - 4) * (rho_t - 2) * (rho_inf)) / ((rho_inf - 4) * (rho_inf - 2) * rho_t));
+				theta = theta.Select((ti, i) => ti - aK[i] * m_[i] * rT * lT[i]).ToArray();
+			}
+			else
+			{
+				theta = theta.Select((ti, i) => ti - aK[i] * m_[i]).ToArray();
+			}
+
+			t++;
+
+			printPoint($"Iteration number: {t}, Best values: ", theta);
+		}
+
+		return theta;
+	}
+
 	public double[] SgdWithSpsa(double[] initialTheta, int maxIterations, double beta1 = 0.9, double beta2 = 0.999, double epsilon = 1e-8)
 	{
 		double[] theta = (double[])initialTheta.Clone();
 		double[] a = engineOptions.Select(option => option.Item3).ToArray();
 		double[] c = engineOptions.Select(option => option.Item3).ToArray();
 		int t = 1;
-		Random random = new Random(Guid.NewGuid().GetHashCode());
+		Random random = new();
 
 		for (int iteration = 0; iteration < maxIterations; iteration++)
 		{
@@ -153,12 +199,5 @@ public class Optimizer
 		cancellationToken = guiCancellationToken;
 		double[] start = engineOptions.Select(item => item.Item2).ToArray();
 		var result = AdamWithSpsa(start, 100);
-
-		//double[] point = result.Item1;
-		//double value = result.Item2;
-
-		//printPoint("Best point", point);
-		// Print the double value
-		//Console.WriteLine($"Value: {value:F3}");
 	}
 }
