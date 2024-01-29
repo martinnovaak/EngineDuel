@@ -13,7 +13,9 @@ public static class Database
 			using (SqliteConnection connection = new SqliteConnection("Data Source=pohl.db"))
 			{
 				if (connection.State != ConnectionState.Open)
+				{
 					connection.Open();
+				}
 
 				using (SqliteCommand cmd = connection.CreateCommand())
 				{
@@ -21,7 +23,7 @@ public static class Database
 									  $"WHERE rowid IN (SELECT rowid FROM openings ORDER BY random() LIMIT {amount})";
 
 					using (SqliteDataReader reader = cmd.ExecuteReader())
-					{
+					{ 
 						while (reader.Read())
 						{
 							string moves = reader["moves"].ToString();
@@ -31,7 +33,9 @@ public static class Database
 				}
 
 				if (connection.State != ConnectionState.Closed)
+				{
 					connection.Close();
+				}
 			}
 		}
 		catch (Exception ex)

@@ -10,16 +10,20 @@ public static class StringExtensions
 
 class UCIEngine
 {
+	private string path;
 	private Process process;
 	private Stopwatch stopwatch;
 	private int time = 10000;
 	private int increment = 100;
 	private string name;
+	private ILogger logger;
 
-	public UCIEngine(string enginePath, int initialTime, int timeIncrement)
+	public UCIEngine(string enginePath, int initialTime, int timeIncrement, ILogger logger)
 	{
+		path = enginePath;
 		time = initialTime;
 		increment = timeIncrement;
+		this.logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
 		process = new Process();
 		process.StartInfo.FileName = enginePath;
@@ -36,17 +40,14 @@ class UCIEngine
 		InitializeEngine();
 	}
 
-	public string GetName()
-	{
-		return name;
-	}
+	public string GetName() => name;
 
 	private void InitializeEngine()
 	{
 		SendCommand("uci");
 		if (!WaitForResponse("uciok"))
 		{
-			Console.WriteLine("Engine did not respond.\n");
+			logger.Log($"Engine {path} did not respond.");
 		}
 	}
 
@@ -65,23 +66,16 @@ class UCIEngine
 	}
 
 	public string GetBestMove()
-	{
-
+	{ 
 		SendCommand($"go wtime {time} btime {time} winc{increment} binc{increment}");
 		TimeSpan startProcessorTime = process.TotalProcessorTime;
-		//stopwatch.Start();
 
 		string bestMove = WaitForBestMove();
-
-		//stopwatch.Stop();
 
 		TimeSpan endProcessorTime = process.TotalProcessorTime;
 
 		TimeSpan cpuTimeUsed = endProcessorTime - startProcessorTime;
-		//if (Math.Abs(cpuTimeUsed.TotalMilliseconds - stopwatch.ElapsedMilliseconds) > 50.0) 
-		//Console.WriteLine($"{cpuTimeUsed.TotalMilliseconds}, {stopwatch.ElapsedMilliseconds}");
-
-		//time += (increment - (int)stopwatch.ElapsedMilliseconds);
+		
 		time += (increment - (int)cpuTimeUsed.TotalMilliseconds);
 
 		stopwatch.Reset();
@@ -89,15 +83,10 @@ class UCIEngine
 		return bestMove;
 	}
 
-	public bool TimeLeft()
-	{
-		return time > 0;
-	}
+	public bool HasTimeLeft() => time > 0;
 
-	private void SendCommand(string command)
-	{
-		process.StandardInput.WriteLine(command);
-	}
+	private void SendCommand(string command) => process.StandardInput.WriteLine(command);
+
 
 	private bool WaitForResponse(string expectedResponse)
 	{
@@ -140,10 +129,7 @@ class UCIEngine
 	}
 
 	// Stop engine calculation
-	public void StopEngine()
-	{
-		SendCommand("stop");
-	}
+	public void StopEngine() => SendCommand("stop");
 
 	// Shut down the engine
 	public void QuitEngine()
@@ -156,11 +142,7 @@ class UCIEngine
 		}
 		catch (IOException ex)
 		{
-			Console.WriteLine($"Error while quitting engine: {ex.Message}");
-
-			// Optionally, you can attempt to clear or reset the process.
-			// For example, you may create a new process instance if needed.
-			// process = new Process();
+			logger.Log($"Error while quitting engine: {ex.Message}");
 		}
 	}
 }
