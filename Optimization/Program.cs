@@ -94,12 +94,10 @@ class Program  {
                     }
                     
                 }
-                else
-                {
-                    //duel.Run(enginePath, enginePath, numberOfThreads, initialTime, increment, rounds, opts);
-                    Optimizer optimizer = new(enginePath1, enginePath2, numberOfThreads, rounds, initialTime, increment, engineOptions);
-                    optimizer.Optimize(new());
-                }
+
+				//duel.Run(enginePath, enginePath, numberOfThreads, initialTime, increment, rounds, opts);
+				Optimizer optimizer = new(enginePath1, enginePath2, numberOfThreads, rounds, initialTime, increment, engineOptions);
+                optimizer.Optimize(new());
             })
             .WithNotParsed(errors => 
             {

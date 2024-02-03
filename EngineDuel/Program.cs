@@ -38,9 +38,6 @@ class Options
 
 	[Option("setoption", Required = false, Separator = ',', HelpText = "Set options for the chess engines.")]
 	public IEnumerable<string> SetOptions { get; set; }
-
-	[Option("tuningfile", Required = false, HelpText = "Path to the CSV file containing tuning parameters.")]
-	public string TuningParametersFile { get; set; }
 }
 
 class Program
@@ -71,42 +68,6 @@ class Program
 			{
 				Console.WriteLine("Failed to parse command-line arguments.");
 			});
-	}
-
-	private static void LoadTuningParametersFromCsv(string filePath, out List<(string, double, double)> tuningOptions)
-	{
-		tuningOptions = new List<(string, double, double)>();
-
-		try
-		{
-			var lines = File.ReadAllLines(filePath);
-
-			foreach (var line in lines.Skip(1)) // Skip header line
-			{
-				var parts = line.Split(',');
-				if (parts.Length == 3)
-				{
-					var option = parts[0].Trim();
-					if (double.TryParse(parts[1].Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var defaultValue) &&
-						double.TryParse(parts[2].Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var stepValue))
-					{
-						tuningOptions.Add((option, defaultValue, stepValue));
-					}
-					else
-					{
-						Console.WriteLine($"Invalid numeric values in CSV file: {line}");
-					}
-				}
-				else
-				{
-					Console.WriteLine($"Invalid line in CSV file: {line}");
-				}
-			}
-		}
-		catch (Exception ex)
-		{
-			Console.WriteLine($"Error loading tuning parameters from CSV file: {ex.Message}");
-		}
 	}
 
 	private static bool TryParseTimeControl(string timeControl, out int initialTime, out int increment)

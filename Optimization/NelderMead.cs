@@ -1,16 +1,19 @@
 ﻿namespace EngineDuel;
 
-public class Optimizer
+public class GlobalOptimizer
 {
-    private string enginePath;
-    private int numberOfThreads;
+    private string enginePath1;
+	private string enginePath2;
+	private int numberOfThreads;
     private int numberOfRounds;
     private int gameTime;
     private int gameIncrement;
-    private List<(string, double)> engineOptions;
-    
-    public Tuple<double[], double> NelderMead(Func<double[], double> f, double[] xStart,
-        double step = 0.5, double noImproveThr = 1e-6,
+	private List<(string, double, double)> engineOptions;
+	private ILogger logger;
+	private CancellationTokenSource cancellationToken;
+
+	public Tuple<double[], double> NelderMead(Func<double[], double> f, double[] xStart, double[] steps, 
+        double noImproveThr = 1e-6,
         int noImprovBreak = 10, int maxIter = 0,
         double alpha = 1.0, 
         double gamma = 2.0, 
@@ -23,8 +26,7 @@ public class Optimizer
         gamma += 2.0 / dim;
         rho -= 1.0 / (2.0 * dim);
         sigma -= 1.0 / dim;
-        
-        //double prevBest = f(xStart);
+       
         double prevBest = 0.5;
         int noImprov = 0;
         var res = new List<Tuple<double[], double>> { Tuple.Create(xStart, prevBest) };
@@ -32,7 +34,7 @@ public class Optimizer
         for (int i = 0; i < dim; i++)
         {
             var x = (double[])xStart.Clone();
-            x[i] += step;
+            x[i] += steps[i];
             printPoint("Testing intial point", x);
             double score = f(x);
             eval++;
@@ -168,44 +170,46 @@ public class Optimizer
         }
         Duel duel = new();
         duel.SetSPRT(0.05, 0.05, 0, 5);
-        duel.disableDetailedPrint();
-        duel.Run(enginePath, enginePath, numberOfThreads, gameTime, gameIncrement, numberOfRounds, options);
+        duel.DisableDetailedPrint();
+        duel.Run(enginePath1, enginePath2, numberOfThreads, gameTime, gameIncrement, numberOfRounds, options, new(), new());
 
-        (int wins, int loses, int draws)  = duel.GetWLD();
+        (int wins, int loses, int draws) = duel.GetWLD();
 
         int N = wins + loses + draws;
 
         return (loses + draws * 0.5) / (double)N;
     }
 
-    void printPoint(string message, double[] point)
-    {
-        Console.Write($"{message}: [");
-        for (int i = 0; i < point.Length; i++)
-        {
-            Console.Write($"{point[i]:F3}");
-            if (i < point.Length - 1)
-            {
-                Console.Write(", ");
-            }
-        }
-        Console.WriteLine("]");
-    }
+	void printPoints(string message, double[] point1, double[] point2)
+	{
+		logger.Log($"{message}: [{string.Join(", ", point1)}] vs [{string.Join(", ", point2)}]");
+	}
 
-    public Optimizer(string path, int threads, int rounds, int time, int increment, List<(string, double)> options)
+	void printPoint(string message, double[] point)
+	{
+		logger.Log($"{message}: [{string.Join(", ", point)}]");
+	}
+
+
+	public GlobalOptimizer(string enginePath1, string enginePath2, int threads, int rounds, int time, int increment, List<(string, double, double)> options, ILogger logger = null)
     {
-        enginePath = path;
-        numberOfThreads = threads;
+		this.enginePath1 = enginePath1;
+		this.enginePath2 = enginePath2;
+		numberOfThreads = threads;
         numberOfRounds = rounds;
         gameTime = time;
         gameIncrement = increment;
         engineOptions = options;
+        this.logger = logger;
     }
 
-    public void Optimize()
+    public void Optimize(CancellationTokenSource guiCancellationToken)
     {
-        double[] start = engineOptions.Select(item => item.Item2).ToArray();
-        var result = NelderMead(GetScore, start);
+		cancellationToken = guiCancellationToken;
+
+		double[] start = engineOptions.Select(item => item.Item2).ToArray();
+		double[] steps = engineOptions.Select(option => option.Item3).ToArray();
+		var result = NelderMead(GetScore, start, steps);
 
         double[] point = result.Item1;
         double value = result.Item2;
