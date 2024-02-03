@@ -52,7 +52,7 @@ public class Duel
 		TimeOut
 	}
 
-	[DllImport("chesslib.dll", EntryPoint = "process_moves", CallingConvention = CallingConvention.Cdecl)]
+	[DllImport("inspector.dll", EntryPoint = "process_moves", CallingConvention = CallingConvention.Cdecl)]
 	private static extern GameState ProcessMoves(string moves);
 
 	public static bool IsMoveStringLegal(string move)
@@ -266,7 +266,6 @@ public class Duel
 		// Initialize communication with the engines
 		UCIEngine engine1 = new UCIEngine(whiteEnginePath, initialTime, increment, logger);
 		UCIEngine engine2 = new UCIEngine(blackEnginePath, initialTime, increment, logger);
-
 
 		foreach (var option in engine1Options)
 		{
